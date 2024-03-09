@@ -61,8 +61,10 @@ __device__ __inline__ void store_output_tile(float4 acumm_smem[][16], float  *sh
   float2 *At = (float2*) filter_frag_mem;
 
   mask = 0x000F;
-  if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003;
-  if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005;
+  // if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003;
+  // if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005;
+  if((blockIdx.x/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003;
+  if(!((blockIdx.x+1)%tiles_dim) && out_w%2)           mask&=0X0005;
   
   // output transpose step
   int t=0;
@@ -83,7 +85,8 @@ __device__ __inline__ void store_output_tile(float4 acumm_smem[][16], float  *sh
 
 
   int c_glb_offset = in_n*out_h*out_w;                    
-  int c_tensor = TileZ*c_glb_offset*BK + (TileY%tiles_dim)*in_n*2 + (TileY/tiles_dim)*in_n*out_w*2 + TileX*BN + ((Inx/8)%2)*2 + (Inx%8)*2*2 + ((Inx/16)*16 + (Iny%4)*4 + Iny/4)*c_glb_offset;
+  //int c_tensor = TileZ*c_glb_offset*BK + (TileY%tiles_dim)*in_n*2 + (TileY/tiles_dim)*in_n*out_w*2 + TileX*BN + ((Inx/8)%2)*2 + (Inx%8)*2*2 + ((Inx/16)*16 + (Iny%4)*4 + Iny/4)*c_glb_offset;
+  int c_tensor = TileZ*c_glb_offset*BK + (TileX%tiles_dim)*in_n*2 + (TileX/tiles_dim)*in_n*out_w*2 + TileY*BN + ((Inx/8)%2)*2 + (Inx%8)*2*2 + ((Inx/16)*16 + (Iny%4)*4 + Iny/4)*c_glb_offset;
   c_tensor/=2; 
 
   #pragma unroll                                  

@@ -27,7 +27,7 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-#include <cudnn.h>
+//#include <cudnn.h>
 
 #include "config.hpp"
 
@@ -286,6 +286,7 @@ int main(int argc, char *argv[]) {
   if(m==2){
     tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
     elems_dim = tiles_dim*4;
+    fprintf(stderr, "%s: tiles_dim = %d,  elems_dim = %d \n", __func__, tiles_dim, elems_dim);
   } else {
     std::cout << "Configuration not supported yet" << std::endl;
     exit(0);
@@ -336,6 +337,9 @@ int main(int argc, char *argv[]) {
    ####################################################################
    */
 
+
+
+
   float *in_data, *filt_data; 
 
   // ImageBatch cuDNN
@@ -344,7 +348,8 @@ int main(int argc, char *argv[]) {
   // Filter cuDNN
   CUDA_CALL(cudaMalloc(
         &filt_data, filt_k * filt_c * filt_h * filt_w * sizeof(float)));
-  
+
+#if 0    
   // =================== Set descriptors =================== //
   cudnnHandle_t cudnn;
   CUDNN_CALL(cudnnCreate(&cudnn));
@@ -396,8 +401,10 @@ int main(int argc, char *argv[]) {
   CUDNN_CALL(cudnnGetConvolutionForwardWorkspaceSize(
         cudnn, in_desc, filt_desc, conv_desc, out_desc, algo, &ws_size));
 
+
   float *ws_data;
   CUDA_CALL(cudaMalloc(&ws_data, ws_size));
+#endif
   
   // =================== Launch convolution on cuDNN =================== //
   float alpha = 1.f;
@@ -434,6 +441,7 @@ int main(int argc, char *argv[]) {
   cudaDeviceSynchronize();
   ( cudaEventRecord( hStart, NULL ) );
   for(int iter=0; iter<iterations; iter++){
+    // fprintf(stderr, "%s: iter = %d \n", __func__, iter);
     OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,
                   out_c*out_n*out_h*out_w,
                   tiles_dim, in_n, tile_size, elems_dim, in_c, filt_k, filt_c, filt_h, filt_w, tile_size, m));
@@ -446,9 +454,11 @@ int main(int argc, char *argv[]) {
 
   std::cout << ",";
 
+#if 0
   // Performs warmup operation
   CUDNN_CALL(cudnnConvolutionForward(cudnn, &alpha, in_desc, in_data, filt_desc, filt_data,
     conv_desc, algo, ws_data, ws_size, &beta, out_desc, out_data_cudnn));
+
 
   // ============================= cuDNN exec =============================
   cudaDeviceSynchronize();
@@ -462,29 +472,29 @@ int main(int argc, char *argv[]) {
   ( cudaEventElapsedTime( &ms, hStart, hStop ) );
   ms = ms/iterations;
   tflops(in_n, in_w, in_h, in_c, filt_w, filt_h, filt_k, pad_w, str_w, out_w, out_h, ms);
-
+#endif
 
   std::cout << std::endl;
   // ============================= Compare results =============================  
-  std::cout << "********************************************" << std::endl;    
-  float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)),
-      *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
-  cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
-  cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+  // std::cout << "********************************************" << std::endl;    
+  // float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)),
+  //     *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
+  // cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+  // cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
   
-  output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
-  free(tmp_openCNN); free(tmp_cudnn); 
+  // output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
+  // free(tmp_openCNN); free(tmp_cudnn); 
 
 
-  CUDNN_CALL(cudnnDestroy(cudnn));
-  CUDA_CALL(cudaFree(out_data_cudnn));
-  CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc));
-  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
-  CUDNN_CALL(cudnnDestroyFilterDescriptor(filt_desc));
-  CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc));
+  // CUDNN_CALL(cudnnDestroy(cudnn));
+  // CUDA_CALL(cudaFree(out_data_cudnn));
+  // CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc));
+  // CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
+  // CUDNN_CALL(cudnnDestroyFilterDescriptor(filt_desc));
+  // CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc));
   CUDA_CALL(cudaFree(filt_data));
   CUDA_CALL(cudaFree(in_data));
-  CUDA_CALL(cudaFree(ws_data));
+  //CUDA_CALL(cudaFree(ws_data));
 
   CUDA_CALL(cudaFree(out_data));
   CUDA_CALL(cudaFree(filt_data_open));

@@ -118,7 +118,8 @@ __device__ __forceinline__ void prefetch_filter_tile(float *pInputs, float *tile
 __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile, int in_h, int in_w,
                   int in_n, int Inx, int Iny, int TileX, int TileY, int tiles_dim, short mask){
   
-  int c_tensor = (TileY%tiles_dim)*in_n*2 + (TileY/tiles_dim)*in_n*in_w*2 + TileX*BN + Iny*(in_n*in_h*in_w) + (Inx/in_n)*2*in_n + (Inx%in_n) - (in_n*in_w+in_n);
+  // int c_tensor = (TileY%tiles_dim)*in_n*2 + (TileY/tiles_dim)*in_n*in_w*2 + TileX*BN + Iny*(in_n*in_h*in_w) + (Inx/in_n)*2*in_n + (Inx%in_n) - (in_n*in_w+in_n);
+  int c_tensor = (TileX%tiles_dim)*in_n*2 + (TileX/tiles_dim)*in_n*in_w*2 + TileY*BN + Iny*(in_n*in_h*in_w) + (Inx/in_n)*2*in_n + (Inx%in_n) - (in_n*in_w+in_n);
   int acumm,x;
            
   if(mask==0xFFFF){
@@ -177,10 +178,15 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   float *filter_smem = (float*)&shared_mem[16*BC*BN];
 
   short m = 0xFFFF;
-  if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
-  if((blockIdx.y/tiles_dim)==(tiles_dim-1)) m &= (!(in_w%2))?(0x0FFF):(0x00FF);
-  if(!((blockIdx.y+1)%tiles_dim)) m &= (!(in_w%2))?(0x7777):(0x3333);
-  if(!((blockIdx.y)%tiles_dim))   m&=0xeeee;
+  // if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
+  // if((blockIdx.y/tiles_dim)==(tiles_dim-1)) m &= (!(in_w%2))?(0x0FFF):(0x00FF);
+  // if(!((blockIdx.y+1)%tiles_dim)) m &= (!(in_w%2))?(0x7777):(0x3333);
+  // if(!((blockIdx.y)%tiles_dim))   m&=0xeeee;
+
+  if((blockIdx.x/tiles_dim)==0)   m&=0xFFF0;
+  if((blockIdx.x/tiles_dim)==(tiles_dim-1)) m &= (!(in_w%2))?(0x0FFF):(0x00FF);
+  if(!((blockIdx.x+1)%tiles_dim)) m &= (!(in_w%2))?(0x7777):(0x3333);
+  if(!((blockIdx.x)%tiles_dim))   m&=0xeeee;
 
   float img_tile[16]; // Prefetch input from GMEM
   float filter_tile[32]; // Prefetch filter from GMEM
@@ -194,6 +200,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
   float4 *B_frag; // Filter data pointer
   int f_frag_offset = 2* (BC*BK); // (2=8/4) SMEM filter read offset
+  
 
   float4 *input_frag  = (float4*) input_frag_mem;
   float4 *filter_frag = (float4*) filter_frag_mem;
@@ -211,6 +218,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
     A_frag = (float4*) (input_smem  + threadIdx.y*BC*BN);
     B_frag = (float4*) (filter_smem + threadIdx.y*BC*BK);
+    
 
     load_and_transform_input_tile(img_tile, input_smem, in_h, in_w,
                  tiles_dim, in_c, in_n, tile_size,
@@ -271,14 +279,18 @@ cudaError_t convolutionForward_32x64x8(float *k, int in_h, int in_w, float *w, i
   int tiles_2d_dim = tiles_dim*tiles_dim;
   int smem_size = (16*BC*BN + 16*BC*BK)*4;
 
-  FX<<<dim3(filt_k/BK, filt_c/BC), dim3(BN, BC)>>>(w, Ww, filt_k, filt_c, filt_h, filt_w, alpha);
-        
+  FX<<<dim3((filt_k+BK-1)/BK, (filt_c+BC-1)/BC), dim3(BN, BC)>>>(w, Ww, filt_k, filt_c, filt_h, filt_w, alpha);
+
+  fprintf(stderr, "%s: after FX \n", __func__);
   #ifdef OPTSTS64_CMP
   smem_size = 65536; // 64 KB
   cudaFuncSetAttribute(Winograd_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   #endif
+  fprintf(stderr, "%s: grid dims (%d, %d, %d) \n", __func__, in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK);
 
-  Winograd_kernel<<<dim3(in_n/BN, tiles_2d_dim, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
+
+  //Winograd_kernel<<<dim3(in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
+  Winograd_kernel<<<dim3(tiles_2d_dim, in_n/BN, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
 
   return cudaGetLastError();
 }
