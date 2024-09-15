@@ -281,16 +281,16 @@ cudaError_t convolutionForward_32x64x8(float *k, int in_h, int in_w, float *w, i
 
   FX<<<dim3((filt_k+BK-1)/BK, (filt_c+BC-1)/BC), dim3(BN, BC)>>>(w, Ww, filt_k, filt_c, filt_h, filt_w, alpha);
 
-  fprintf(stderr, "%s: after FX \n", __func__);
+  // fprintf(stderr, "%s: after FX \n", __func__);
   #ifdef OPTSTS64_CMP
   smem_size = 65536; // 64 KB
   cudaFuncSetAttribute(Winograd_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   #endif
-  fprintf(stderr, "%s: grid dims (%d, %d, %d) \n", __func__, in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK);
+  // fprintf(stderr, "%s: grid dims (%d, %d, %d) \n", __func__, in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK);
 
 
-  //Winograd_kernel<<<dim3(in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
-  Winograd_kernel<<<dim3(tiles_2d_dim, in_n/BN, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
+  Winograd_kernel<<<dim3(in_n/BN, tiles_2d_dim, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
+  // Winograd_kernel<<<dim3(tiles_2d_dim, in_n/BN, (filt_k+BK-1)/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
 
   return cudaGetLastError();
 }

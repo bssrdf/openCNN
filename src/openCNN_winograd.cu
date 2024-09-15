@@ -284,7 +284,9 @@ int main(int argc, char *argv[]) {
   int tiles_dim;
   
   if(m==2){
-    tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
+    // tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
+    tiles_dim = ceil(ceil((double)(min(in_w,in_h)+2)/2)-1);
+    // tiles_dim = ceil(ceil((double)(in_h+2)/2)-1);
     elems_dim = tiles_dim*4;
     fprintf(stderr, "%s: tiles_dim = %d,  elems_dim = %d \n", __func__, tiles_dim, elems_dim);
   } else {
@@ -313,6 +315,8 @@ int main(int argc, char *argv[]) {
 
   // Output openCNN    
   float *out_data;
+  fprintf(stderr, "%s: out_n = %d,  out_c = %d, out_h = %d,  out_w = %d, total = %ld \n",
+       __func__, out_n , out_c,  out_h, out_w, out_n * out_c * out_h * out_w *4);
   OPENCNN_CALL(cudaMalloc(
         &out_data, out_n * out_c * out_h * out_w * sizeof(float)));  
 
@@ -430,7 +434,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 100;
+  int iterations = 10;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,

@@ -116,9 +116,15 @@ __device__ __forceinline__ void prefetch_filter_tile(float *pInputs, float *tile
   }
 }
 
-__device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile, int in_h, int in_w, int in_n, int tiles_dim, short mask){
+__device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile, int in_h, 
+                       int in_w, int in_n, int tiles_dim, short mask){
   
-  int c_tensor = (blockIdx.y%tiles_dim)*in_n*2 + (blockIdx.y/tiles_dim)*in_n*in_w*2 + blockIdx.x*BN + threadIdx.y*(in_n*in_h*in_w) + (threadIdx.x/in_n)*2*in_n + (threadIdx.x%in_n) - (in_n*in_w+in_n);
+  int c_tensor = (blockIdx.y%tiles_dim)*in_n*2 + (blockIdx.y/tiles_dim)*in_n*in_w*2 
+      + blockIdx.x*BN + threadIdx.y*(in_n*in_h*in_w) + (threadIdx.x/in_n)*2*in_n +
+        (threadIdx.x%in_n) - (in_n*in_w+in_n);
+  // if(threadIdx.x/in_n != 0){
+  //   printf(" %d, %d, %d, %d \n", blockIdx.x, blockIdx.y,  threadIdx.x, threadIdx.y);
+  // }
   int acumm,x;
   //short x1,x2;                 
            

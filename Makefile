@@ -1,4 +1,4 @@
-ARCH = 61 # 75 # modify this. Ampere=86
+ARCH = 86 # 75 # modify this. Ampere=86
 NAME = wgrad
 OUT = OPTSTS64
 #MODE = PROF
