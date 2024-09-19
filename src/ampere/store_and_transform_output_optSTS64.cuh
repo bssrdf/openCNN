@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "../config.hpp"
+#include "../config_40.hpp"
 
 #ifndef _OUTPUT_KERNEL_OPT1_
 #define _OUTPUT_KERNEL_OPT1_

@@ -27,8 +27,9 @@
 #include <sys/time.h>
 #include <sys/resource.h>
 
-//#include <cudnn.h>
+#include <cudnn.h>
 
+// #include "config_40.hpp"
 #include "config.hpp"
 
 #ifdef BASE
@@ -38,11 +39,12 @@
   #include "ampere/convolutionForward_32x64x8_baseline.cu"
   #endif
 #else
-  #if __CUDA_ARCH__ < 800
-  #include "convolutionForward_32x64x8.cu"  
-  #else 
+  // #if __CUDA_ARCH__ < 800
+  // #include "convolutionForward_32x64x8.cu"  
+  // #else 
   #include "ampere/convolutionForward_32x64x8.cu"
-  #endif
+  // #include "ampere/convolutionForward_40x40x8.cu"
+  // #endif
 #endif
 
 /*
@@ -131,7 +133,7 @@ __global__ void dev_const(float *px, float k, int n) {
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = curand_uniform(&state);
+    px[tid] = tid % 2 ? k : k+1;
 }
 
 __global__ void dev_iota(float *px, int n) {
@@ -184,12 +186,12 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
-            if (diff > 1){ //1e-4
+            if (diff > 1.e-4){ //1e-4
               error_cnt++;
-              printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
-              A[k*len*len*n + i*len*n + j*n + m],
-              B[m*len*len*channel + k*len*len + i*len + j], diff);
-              std::exit(1);
+              // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
+              // A[k*len*len*n + i*len*n + j*n + m],
+              // B[m*len*len*channel + k*len*len + i*len + j], diff);
+              // std::exit(1);
             }
             if (diff > max_error)
             max_error = diff;
@@ -211,6 +213,9 @@ cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h
 
   if(BN==32 && BK==64 && BC==8){
     out = convolutionForward_32x64x8(k, in_h, in_w, w, out_h, out_w, out_n, out_c, C, Ww, n, tiles_dim, in_n, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
+  // // } else 
+  // if(BN==32 && BK==64 && BC==5){
+  //    out = convolutionForward_40x40x8(k, in_h, in_w, w, out_h, out_w, out_n, out_c, C, Ww, n, tiles_dim, in_n, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
   } else {
     std::cout << "Configuration not supported yet" << std::endl;
   }
@@ -226,12 +231,14 @@ cudaError_t init_data(float *in_data, float *in_data_open, float *filt_data, flo
   dim3 dimBlock(blk_size);
   dim3 dimGrid((n + dimBlock.x -1)/dimBlock.x);
 
-  dev_iota<<<dimGrid, dimBlock>>>(in_data, n);
+  // dev_iota<<<dimGrid, dimBlock>>>(in_data, n);
+  dev_const<<<dimGrid, dimBlock>>>(in_data, 1.5f, n);
   data_cpy<<<dim3(in_n, in_w, in_h), in_c>>>(in_data_open, in_data, in_w, in_h, in_c, in_n);
 
   n = filt_k*filt_c*filt_h*filt_w;
   dim3 dimGrid_f = dim3((n + dimBlock.x -1)/dimBlock.x);
-  dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 1.f, n);
+  // dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 1.f, n);
+  dev_iota<<<dimGrid_f, dimBlock>>>(filt_data, n);
   data_cpy<<<dim3(filt_k, filt_w, filt_h), dim3(filt_c)>>>(filt_data_open, filt_data, filt_w, filt_h, filt_c, filt_k);
 
   return cudaGetLastError();
@@ -284,8 +291,8 @@ int main(int argc, char *argv[]) {
   int tiles_dim;
   
   if(m==2){
-    // tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
-    tiles_dim = ceil(ceil((double)(min(in_w,in_h)+2)/2)-1);
+    tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
+    // tiles_dim = ceil(ceil((double)(min(in_w,in_h)+2)/2)-1);
     // tiles_dim = ceil(ceil((double)(in_h+2)/2)-1);
     elems_dim = tiles_dim*4;
     fprintf(stderr, "%s: tiles_dim = %d,  elems_dim = %d \n", __func__, tiles_dim, elems_dim);
@@ -353,7 +360,7 @@ int main(int argc, char *argv[]) {
   CUDA_CALL(cudaMalloc(
         &filt_data, filt_k * filt_c * filt_h * filt_w * sizeof(float)));
 
-#if 0    
+#if 1    
   // =================== Set descriptors =================== //
   cudnnHandle_t cudnn;
   CUDNN_CALL(cudnnCreate(&cudnn));
@@ -399,6 +406,8 @@ int main(int argc, char *argv[]) {
 
   // =================== Query convolution forward algorithm =================== //
   cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
 
   // =================== Query workspace and allocate =================== //
   size_t ws_size;
@@ -434,7 +443,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 10;
+  int iterations = 20;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,
@@ -458,7 +467,7 @@ int main(int argc, char *argv[]) {
 
   std::cout << ",";
 
-#if 0
+#if 1
   // Performs warmup operation
   CUDNN_CALL(cudnnConvolutionForward(cudnn, &alpha, in_desc, in_data, filt_desc, filt_data,
     conv_desc, algo, ws_data, ws_size, &beta, out_desc, out_data_cudnn));
@@ -480,25 +489,25 @@ int main(int argc, char *argv[]) {
 
   std::cout << std::endl;
   // ============================= Compare results =============================  
-  // std::cout << "********************************************" << std::endl;    
-  // float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)),
-  //     *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
-  // cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
-  // cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+  std::cout << "********************************************" << std::endl;    
+  float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)),
+      *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
+  cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+  cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
   
-  // output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
-  // free(tmp_openCNN); free(tmp_cudnn); 
+  output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
+  free(tmp_openCNN); free(tmp_cudnn); 
 
 
-  // CUDNN_CALL(cudnnDestroy(cudnn));
-  // CUDA_CALL(cudaFree(out_data_cudnn));
-  // CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc));
-  // CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
-  // CUDNN_CALL(cudnnDestroyFilterDescriptor(filt_desc));
-  // CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc));
+  CUDNN_CALL(cudnnDestroy(cudnn));
+  CUDA_CALL(cudaFree(out_data_cudnn));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(out_desc));
+  CUDNN_CALL(cudnnDestroyConvolutionDescriptor(conv_desc));
+  CUDNN_CALL(cudnnDestroyFilterDescriptor(filt_desc));
+  CUDNN_CALL(cudnnDestroyTensorDescriptor(in_desc));
   CUDA_CALL(cudaFree(filt_data));
   CUDA_CALL(cudaFree(in_data));
-  //CUDA_CALL(cudaFree(ws_data));
+  CUDA_CALL(cudaFree(ws_data));
 
   CUDA_CALL(cudaFree(out_data));
   CUDA_CALL(cudaFree(filt_data_open));

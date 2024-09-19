@@ -14,6 +14,8 @@
 
 
 __device__  __forceinline__ void outer_product(float4* input_frag, float4* filter_frag, float4 accumulator[][16]){
+
+    // if(threadIdx.y >= BC) return;
     accumulator[0][0].x += input_frag[0].x*filter_frag[0].x;
     accumulator[0][0].z += input_frag[0].y*filter_frag[0].x;
     accumulator[0][0].y += input_frag[0].z*filter_frag[0].x;

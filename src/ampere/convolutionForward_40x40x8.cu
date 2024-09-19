@@ -55,6 +55,8 @@ __device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float 
                                   int tiles_2d_dim, int tile_2d_s){
 
   float workspace[3]; 
+
+  if(threadIdx.y >= BC) return;
   
   #pragma unroll
   for(int j=0; j<4; j++){
@@ -83,9 +85,10 @@ __device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float 
 
 __device__ __forceinline__ void load_filter_tile(float *tiles, float *pOutputs, 
                                 int filt_c, int filt_k){
-  // load filter tile from registor to smem
+ 
   int c_tensor_s = threadIdx.y*BK + threadIdx.x;
   int c_offset_s = BK*BC;
+  if(threadIdx.y >= BC) return;
   
   for(int k=0; k<2; k++){ // prefetch 2 filter tiles/thread
     for(int i=0; i<4; i++){
@@ -94,7 +97,7 @@ __device__ __forceinline__ void load_filter_tile(float *tiles, float *pOutputs,
         pOutputs[c_tensor_s + i*c_offset_s*4 + j*c_offset_s] = tiles[k*16 + i*4 + j];
       }
     }
-    // the two tiles are BN apart in smem
+
     c_tensor_s += BN;
   }
   
@@ -103,10 +106,8 @@ __device__ __forceinline__ void load_filter_tile(float *tiles, float *pOutputs,
 __device__ __forceinline__ void prefetch_filter_tile(float *pInputs, float *tiles, int filt_k){
 
   int c_tensor = blockIdx.z*BK + (threadIdx.y*filt_k<<4) + threadIdx.x; // Iny*filt_k*4*4
-  // each threadIdx.y corresponds to one channel; there are 8 different threadIdx.y so 8 channels 
   
-  //each thread (32 threads in x direction) loads 2 kernel tiles (32 in K direction apart)
-  // save the two tiles in a float[32] register, float[16] for each  
+  if(threadIdx.y >= BC) return;
   int acumm;
   #pragma unroll  
   for(int i=0; i<4; i++){
@@ -129,7 +130,8 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
   //   printf(" %d, %d, %d, %d \n", blockIdx.x, blockIdx.y,  threadIdx.x, threadIdx.y);
   // }
   int acumm,x;
-  //short x1,x2;                 
+  //short x1,x2;     
+  if(threadIdx.y >= BC) return;
            
   if(mask==0xFFFF){
     #pragma unroll
@@ -150,23 +152,14 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
         tile[x] = 0;
         if(mask&(1<<x))
           tile[x]=pInputs[acumm + j*in_n + c_tensor];
-        // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
-        //   && threadIdx.x == 0  && threadIdx.y == 0){
-        //      printf("%d, %d, %d, %d, %s, %f, %d\n", i, j, x, acumm+j*in_n, mask&(1<<x)?"t":"f",tile[x],acumm + j*in_n + c_tensor);   
-        // }          
       }
     }
   }
-  // if(blockIdx.y == 1 && blockIdx.x == 0 && blockIdx.z == 0 
-  //     && threadIdx.x == 0  && threadIdx.y == 0){
-  //       for(int i = 0; i < 16; i++){
-  //         printf("%d, %f\n", i, tile[i]);
-  //       }
-  // }
-
 }
 
 __device__  __forceinline__ void prefetch_filter_frag(float4 *filter_frag, float4 *B_frag, int f_frag_offset, int offset1, int offset2){
+
+  if(threadIdx.y >= BC) return;
 
   *((float4*) (filter_frag))     = *(B_frag + offset1);
   *((float4*) (filter_frag + 1)) = *(B_frag + offset2);
@@ -175,7 +168,8 @@ __device__  __forceinline__ void prefetch_filter_frag(float4 *filter_frag, float
   *((float4*) (filter_frag + 3)) = *(B_frag + f_frag_offset + offset2);
 }
 
-__device__  __forceinline__ void prefetch_input_frag(float4* input_frag, float4 *A_frag, int frag_offset, int offset1, int offset2){  
+__device__  __forceinline__ void prefetch_input_frag(float4* input_frag, float4 *A_frag, int iter, int frag_offset, int offset1, int offset2){  
+  if(threadIdx.y >= BC) return;
 
   *((float4*) (input_frag))     = *(A_frag + offset1); //ld_shared(A_frag + offset1);
   *((float4*) (input_frag + 1)) = *(A_frag + offset2);
@@ -192,7 +186,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
   extern __shared__ float shared_mem[];
   float *input_smem  = (float*)shared_mem;
-  float *filter_smem = (float*)&shared_mem[16*BC*BN];
+  // float *filter_smem = (float*)&shared_mem[16*BC*BN];
+  float *filter_smem = (float*)&shared_mem[16*8*BN];
 
   short m = 0xFFFF;
   if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
@@ -218,6 +213,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
   float4 *swap;
 
+  // if(threadIdx.y >= BC) return;
+
   prefetch_input_tile(A, img_tile, in_h, in_w, in_n, tiles_dim, m);
   prefetch_filter_tile(B, filter_tile, filt_k);
 
@@ -237,7 +234,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
     __syncthreads();
 
-    prefetch_input_frag(input_frag, A_frag, frag_offset, access_s[0][threadIdx.x], access_s[1][threadIdx.x]);
+    prefetch_input_frag(input_frag, A_frag, iter, frag_offset, access_s[0][threadIdx.x], access_s[1][threadIdx.x]);
     prefetch_filter_frag(filter_frag, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
     
     #pragma unroll
@@ -246,8 +243,10 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
       if(i<(BC-1)){
         A_frag += BN/4;
         B_frag += BK/4;
+        // A_frag += 8;
+        // B_frag += 16;
 
-        prefetch_input_frag(input_frag_buffer, A_frag, frag_offset, access_s[0][threadIdx.x], access_s[1][threadIdx.x]);
+        prefetch_input_frag(input_frag_buffer, A_frag, iter, frag_offset, access_s[0][threadIdx.x], access_s[1][threadIdx.x]);
         prefetch_filter_frag(filter_frag_buffer, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
       }
 
@@ -279,7 +278,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
                      
 }
 
-cudaError_t convolutionForward_32x64x8(float *k, int in_h, int in_w, float *w, int out_h,
+cudaError_t convolutionForward_40x40x8(float *k, int in_h, int in_w, float *w, int out_h,
                   int out_w, int out_n, int out_c, float *C, float *Ww, 
                 const unsigned int n,
                 int tiles_dim, int in_n, int tile_size,
@@ -287,7 +286,8 @@ cudaError_t convolutionForward_32x64x8(float *k, int in_h, int in_w, float *w, i
 
   int tile_2d_s = tile_size*tile_size;
   int tiles_2d_dim = tiles_dim*tiles_dim;
-  int smem_size = (16*BC*BN + 16*BC*BK)*4;
+  // int smem_size = (16*BC*BN + 16*BC*BK)*4;
+  int smem_size = (16*8*BN + 16*8*BK)*4;
 
   FX<<<dim3(filt_k/BK, filt_c/BC), dim3(BN, BC)>>>(w, Ww, filt_k, filt_c, filt_h, filt_w, alpha);
         
@@ -295,7 +295,7 @@ cudaError_t convolutionForward_32x64x8(float *k, int in_h, int in_w, float *w, i
   smem_size = 65536; // 64 KB
   cudaFuncSetAttribute(Winograd_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size);
   #endif
-
+  // printf("launching %d blocks in y \n ", tiles_2d_dim); 
   Winograd_kernel<<<dim3(in_n/BN, tiles_2d_dim, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, tiles_dim, in_c, in_n, in_h, in_w, tile_size, filt_k, filt_c, tiles_2d_dim, out_c, out_n, tile_2d_s, out_h, out_w);
 
   return cudaGetLastError();

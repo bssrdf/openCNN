@@ -5,8 +5,8 @@ OUT = OPTSTS64
 #LBR = OPENCNN
 
 all:
-#   nvcc src/openCNN_winograd.cu -lcudnn -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH)-o $(NAME) -D$(OUT)
-	nvcc src/openCNN_winograd.cu -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH)-o $(NAME) -D$(OUT)
+	nvcc src/openCNN_winograd.cu -lcudnn -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH)-o $(NAME) -D$(OUT)
+	# nvcc src/openCNN_winograd.cu -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH)-o $(NAME) -D$(OUT)
 
 clean:
 	rm $(NAME)
