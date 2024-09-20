@@ -203,15 +203,16 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
 
 
 cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h,
-                                    int out_w, int out_n, int out_c, float *C, float *Ww, 
-                                  const unsigned int n,
-                                  int tiles_dim, int in_n, int tile_size, int elems_dim,
+                                    int out_w, int out_c, float *C, float *Ww,
+                                  int tiles_dim, int tile_size, int elems_dim,
                                   int in_c, int filt_k, int filt_c, int filt_h, int filt_w,
                                   int alpha, int m){
   cudaError_t out;
 
   if(BK==64 && BC==8){
-    out = convolutionForward_1x64x8(k, in_h, in_w, w, out_h, out_w, out_n, out_c, C, Ww, n, tiles_dim, in_n, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
+    out = convolutionForward_1x64x8(k, in_h, in_w, w, out_h,
+                out_w, out_c, C, Ww,
+                tiles_dim, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
   // // } else 
   // if(BN==32 && BK==64 && BC==5){
   //    out = convolutionForward_40x40x8(k, in_h, in_w, w, out_h, out_w, out_n, out_c, C, Ww, n, tiles_dim, in_n, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
@@ -445,18 +446,22 @@ int main(int argc, char *argv[]) {
   int iterations = 20;
 
   // Performs warmup operation
-  OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,
-    out_c*out_n*out_h*out_w,
-    tiles_dim, in_n, tile_size, elems_dim, in_c, filt_k, filt_c, filt_h, filt_w, tile_size, m));
+  OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
+                                  out_w, out_c, out_data, workspace,
+                                   tiles_dim, tile_size, elems_dim,
+                                   in_c, filt_k, filt_c, filt_h, filt_w,
+                                   tile_size, m));
 
   // ============================= openCNN exec =============================  
   cudaDeviceSynchronize();
   ( cudaEventRecord( hStart, NULL ) );
   for(int iter=0; iter<iterations; iter++){
     // fprintf(stderr, "%s: iter = %d \n", __func__, iter);
-    OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,
-                  out_c*out_n*out_h*out_w,
-                  tiles_dim, in_n, tile_size, elems_dim, in_c, filt_k, filt_c, filt_h, filt_w, tile_size, m));
+    OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
+                                    out_w, out_c, out_data, workspace,
+                                   tiles_dim, tile_size, elems_dim,
+                                   in_c, filt_k, filt_c, filt_h, filt_w,
+                                   tile_size, m));
   }
   ( cudaEventRecord( hStop, NULL ) );
   ( cudaEventSynchronize( hStop ) );

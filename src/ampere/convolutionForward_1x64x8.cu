@@ -302,7 +302,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
 cudaError_t convolutionForward_1x64x8(float *k, int in_h, int in_w, float *w, int out_h,
                   int out_w, int out_c, float *C, float *Ww,                 
-                int tiles_dim, int in_n, int tile_size,
+                int tiles_dim, int tile_size,
                 int in_c, int filt_k, int filt_c, int filt_h, int filt_w, int alpha, int m){
 
   int tile_2d_s = tile_size*tile_size;
