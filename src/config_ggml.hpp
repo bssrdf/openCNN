@@ -16,7 +16,7 @@
 #ifndef COMMON_INCLUDE_FILE
 #define COMMON_INCLUDE_FILE
 
-#define BC 5
+#define BC 8
 #define BN 32
 #define BK 64
 ///////////////////// For Non-Fused version
