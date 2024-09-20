@@ -84,10 +84,18 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
   // int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
-  int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + 
-                (blockIdx.y/tiles_dim)*out_w*2 + blockIdx.x*BN + (threadIdx.x%16)*2+
-                ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
+  // int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + 
+  //               (blockIdx.y/tiles_dim)*out_w*2 + blockIdx.x*BN + (threadIdx.x%16)*2+
+  //               ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
   // c_tensor/=2; 
+
+  // for(int i = 0;i < 2; i++){
+  //    for(int j = 0; j < 8; j++){
+  //     if(acumm_smem[i][j] < 0.f)
+  //       printf(" (%d, %d,  %d), (%d, %d), %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, acumm_smem[i][j]);
+  //    }
+  // }
 
   int idx = threadIdx.y % 2 ? threadIdx.y * 2 - 1 : threadIdx.y * 2; 
   int idx1 = idx + 2;
@@ -99,9 +107,25 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
       output_smem[(4*acumm1 + i)*16 + idx  + acumm4] = acumm_smem[0][i+4];
       output_smem[(4*acumm1 + i)*16 + idx1     ] = acumm_smem[1][i]; 
       output_smem[(4*acumm1 + i)*16 + idx1 + acumm4] = acumm_smem[1][i+4];
+      // if(blockIdx.y == 0 && blockIdx.z == 0 && (4*acumm1 + i)*16 + idx == 2)
+      //   printf("A (%d, %d), %d, %f \n",
+      //        threadIdx.x, threadIdx.y, i, output_smem[(4*acumm1 + i)*16 + idx      ]);
+      // if(blockIdx.y == 0 && blockIdx.z == 0 && (4*acumm1 + i)*16 + idx1 == 2)
+      //   printf("B (%d, %d), %d, %f \n",
+      //        threadIdx.x, threadIdx.y, i, output_smem[(4*acumm1 + i)*16 + idx1      ]);
+      
     }
   }  
   __syncthreads();
+
+  if( blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+    for(int i = 0; i < BC; ++i){
+      printf("%d, [", i);    
+      for(int j = 0; j < 16; ++j)
+        printf(" %f, ", output_smem[i*16+j]);
+      printf("]\n");   
+    }
+  }
    
   // now smem contains all 64 4x4 tiles with elements of each tile contiguous 
 
@@ -123,19 +147,29 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
   //   }
   // }
 
+  int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + 
+                (blockIdx.y/tiles_dim)*out_w*2 + (idx+threadIdx.y*8)*c_glb_offset;
+  
+  if(threadIdx.x < 8){
+    #pragma unroll
+    for(int i=0; i<2; i++){
+      x = i*4;
+      x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
+      if(mask&(1<<(i*2))){
+        C[x1 + c_tensor] = At[x] + At[x+1] + At[x+2];      
+        if(x1+c_tensor == 1)
+          printf("X (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
+              threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
+      }
 
-  #pragma unroll
-  for(int i=0; i<2; i++){
-    x = i*4;
-    x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
-    if(mask&(1<<(i*2))){
-      C[x1 + c_tensor] = At[x] + At[x+1] + At[x+2];      
-    }
-
-    if(mask&(1<<(i*2+1))){
-      C[x1 + c_tensor] = At[x+1] - At[x+2] - At[x+3];    
-    }
-  } 
+      if(mask&(1<<(i*2+1))){
+        C[x1 + c_tensor + 1] = At[x+1] - At[x+2] - At[x+3];    
+        if(x1+c_tensor + 1 == 1)
+          printf("Y (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
+              threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
+      }
+    } 
+  }
   __syncthreads();
   
 }

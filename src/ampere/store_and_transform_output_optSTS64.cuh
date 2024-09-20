@@ -32,7 +32,27 @@ __device__ __forceinline__ void  transform_output_tile(float2 *pOutputs, float2 
 
     At[4+j].x = C_tile[4+j].x - C_tile[8+j].x - C_tile[12+j].x;
     At[4+j].y = C_tile[4+j].y - C_tile[8+j].y - C_tile[12+j].y;
+
+    // if(At[j].x < 0.f)
+    //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, j, At[j].x, C_tile[j].x, C_tile[4+j].x,  C_tile[8+j].x);
+    // if(At[j].y < 0.f)
+    //     printf(" B, (%d, %d,  %d), (%d, %d), %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, j, At[j].y, C_tile[j].y, C_tile[4+j].y,  C_tile[8+j].y);
+    // if(At[4+j].x < 0.f)
+    //     printf(" C, (%d, %d,  %d), (%d, %d), %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, j, At[4+j].x, C_tile[4+j].x, C_tile[8+j].x,  C_tile[12+j].x);
+    // if(At[4+j].y < 0.f)
+    //     printf(" D, (%d, %d,  %d), (%d, %d), %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, j, At[4+j].y, C_tile[4+j].y, C_tile[8+j].y,  C_tile[12+j].y);
   }
+
+  if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+      printf("round, %d, [", round);
+      for(int i = 0; i < 8; ++i)
+        printf(" (%f, %f) ", At[i].x, At[i].y );
+      printf("]\n");   
+    }
 
 
   #pragma unroll
@@ -42,6 +62,12 @@ __device__ __forceinline__ void  transform_output_tile(float2 *pOutputs, float2 
     if(mask&(1<<(i*2))){
       pOutputs[x1 + c_tensor].x = At[x].x + At[x+1].x + At[x+2].x;
       pOutputs[x1 + c_tensor].y = At[x].y + At[x+1].y + At[x+2].y;
+      // if(pOutputs[x1 + c_tensor].x < 0.f)
+      //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].x, At[x].x, At[x+1].x, At[x+2].x);
+      // if(pOutputs[x1 + c_tensor].y < 0.f)
+      //   printf(" B, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].y, At[x].y, At[x+1].y, At[x+2].y);
     }
 
     if(mask&(1<<(i*2+1))){
@@ -85,6 +111,25 @@ __device__ __forceinline__ void store_output_tile(float4 acumm_smem[][16], float
                 ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
   c_tensor/=2; 
 
+  // for(int i = 0;i < 2; i++){
+  //     for(int j = 0; j < 16; i++){
+  //     if(acumm_smem[i][j].x < 0.f)
+  //       printf(" X, (%d, %d,  %d), (%d, %d), %d, %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, j, acumm_smem[i][j].x);
+  //     if(acumm_smem[i][j].y < 0.f)
+  //       printf(" Y, (%d, %d,  %d), (%d, %d), %d, %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, j, acumm_smem[i][j].y);
+  //     if(acumm_smem[i][j].z < 0.f)
+  //       printf(" Z, (%d, %d,  %d), (%d, %d), %d, %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, j, acumm_smem[i][j].z);  
+  //     if(acumm_smem[i][j].w < 0.f)
+  //       printf(" W, (%d, %d,  %d), (%d, %d), %d, %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, j, acumm_smem[i][j].w);
+  //     }
+  // }    
+
+
+
   #pragma unroll                                  
   for(int round=0; round<4; round++){
 
@@ -108,15 +153,30 @@ __device__ __forceinline__ void store_output_tile(float4 acumm_smem[][16], float
     *( (float2*) (output_smem + idx2 + acumm4 + acumm2) ) = *(accumulator+t+38);
     *( (float2*) (output_smem + idx2 + acumm4 + acumm2 + 16) ) = *(accumulator+t+39); // float 4, t+19
     
+    
+
     t+=8;
 
     __syncthreads();
+
+  // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+  //   printf("round, %d, [", round);
+  //   for(int i = 0; i < 16; ++i)
+  //     printf(" %f, ", shared_mem[i]);
+  //   printf("]\n");   
+  // }
 
     
     for(int i=0; i<16; i++){
       C_tile[i].x = shared_mem[i*offset + init];
       C_tile[i].y = shared_mem[i*offset + init + 32];
     }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+    //   printf("round, %d, [", round);
+    //   for(int i = 0; i < 16; ++i)
+    //     printf(" (%f, %f) ", C_tile[i].x, C_tile[i].y);
+    //   printf("]\n");   
+    // }
 
     // transform output tiles
     transform_output_tile(C_out, C_tile, At, tiles_dim, round, in_n, c_tensor, c_glb_offset, mask, out_w);

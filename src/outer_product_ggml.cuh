@@ -15,6 +15,29 @@
 
 __device__  __forceinline__ void outer_product(float input[], float4* filter_frag, float accumulator[][8]){
 
+    // if(input[0] < 0.f)
+    //     printf(" A (%d, %d,  %d), (%d, %d), %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, input[0]);
+    // if(input[1] < 0.f)
+    //     printf(" B (%d, %d,  %d), (%d, %d), %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, input[1]);
+  
+  //   for(int i = 0;i < 4; i++){
+  //     if(filter_frag[i].x< 0.f)
+  //       printf(" X, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, filter_frag[i].x);
+  //     if(filter_frag[i].x< 0.f)
+  //       printf(" Y, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, filter_frag[i].y);
+  //     if(filter_frag[i].x< 0.f)
+  //       printf(" Z, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, filter_frag[i].z);
+  //     if(filter_frag[i].x< 0.f)
+  //       printf(" W, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+  //            threadIdx.x, threadIdx.y, i, filter_frag[i].w);
+  // }    
+
+
     accumulator[0][0] += input[0]*filter_frag[0].x;
     accumulator[0][1] += input[0]*filter_frag[0].y;
     accumulator[0][2] += input[0]*filter_frag[0].z;

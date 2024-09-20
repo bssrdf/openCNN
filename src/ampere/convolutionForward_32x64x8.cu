@@ -77,6 +77,19 @@ __device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float 
     pOutputs[c_tensor+i*c_offset*4+c_offset] = d(Btd, i, 1) + d(Btd, i, 2);
     pOutputs[c_tensor+i*c_offset*4+2*c_offset] = d(Btd, i, 2) - d(Btd, i, 1);
     pOutputs[c_tensor+i*c_offset*4+3*c_offset] = d(Btd, i, 1) - d(Btd, i, 3);
+    // if(pOutputs[c_tensor+i*c_offset*4] < 0.f)
+    //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4]);
+    // if(pOutputs[c_tensor+i*c_offset*4+c_offset] < 0.f)
+    //     printf(" B, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+c_offset]);
+    // if(pOutputs[c_tensor+i*c_offset*4+2*c_offset] < 0.f)
+    //     printf(" C, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+2*c_offset]);
+    // if(pOutputs[c_tensor+i*c_offset*4+3*c_offset] < 0.f)
+    //     printf(" D, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+3*c_offset]);
+       
   }     
 
 }
@@ -237,6 +250,19 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
     __syncthreads();
 
+    // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+    //     // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+    //     printf("iter: %d, \n ",iter);
+    //     for(int i = 0; i < 16; i++){
+    //       printf("%d ,[", i);
+    //       for(int j = 0; j < 8; j++){
+    //         printf( "%f,", input_smem[i*BC*BN+ j*BN]);
+    //       }
+    //     printf("]\n");
+    //     }
+    //   }
+
+
     prefetch_input_frag(input_frag, A_frag, frag_offset, access_s[0][threadIdx.x], access_s[1][threadIdx.x]);
     prefetch_filter_frag(filter_frag, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
     
@@ -252,6 +278,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
       }
 
       outer_product(input_frag, filter_frag, accumulator);
+      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
+          printf("A %d, %f, %f, %f, %f \n", iter, i, accumulator[0][0].x, accumulator[0][0].y ,accumulator[0][0].z ,accumulator[0][0].w);
 
       swap = input_frag;
       input_frag = input_frag_buffer;

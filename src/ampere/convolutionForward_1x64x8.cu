@@ -82,6 +82,18 @@ __device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float 
     pOutputs[c_tensor+i*c_offset*4+c_offset] = d(Btd, i, 1) + d(Btd, i, 2);
     pOutputs[c_tensor+i*c_offset*4+2*c_offset] = d(Btd, i, 2) - d(Btd, i, 1);
     pOutputs[c_tensor+i*c_offset*4+3*c_offset] = d(Btd, i, 1) - d(Btd, i, 3);
+    // if(pOutputs[c_tensor+i*c_offset*4] < 0.f)
+    //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4]);
+    // if(pOutputs[c_tensor+i*c_offset*4+c_offset] < 0.f)
+    //     printf(" B, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+c_offset]);
+    // if(pOutputs[c_tensor+i*c_offset*4+2*c_offset] < 0.f)
+    //     printf(" C, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+2*c_offset]);
+    // if(pOutputs[c_tensor+i*c_offset*4+3*c_offset] < 0.f)
+    //     printf(" D, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+3*c_offset]);
   }     
 
 }
@@ -148,7 +160,7 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
   int acumm,x;
   //short x1,x2;     
   
-  if(threadIdx.x > 0) return; // only thread needed per threadIdx.y
+  // if(threadIdx.x > 0) return; // only thread needed per threadIdx.y
            
   if(mask==0xFFFF){
     #pragma unroll
@@ -169,6 +181,10 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
         tile[x] = 0;
         if(mask&(1<<x))
           tile[x]=pInputs[acumm + j + c_tensor];
+        // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
+        //   && threadIdx.x == 0  && threadIdx.y == 0){
+        //      printf("%d, %d, %d, %d, %s, %f, %d\n", i, j, x, acumm+j, mask&(1<<x)?"t":"f",tile[x],acumm + j + c_tensor);   
+        // }        
       }
     }
   }
@@ -210,7 +226,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
   extern __shared__ float shared_mem[];
   float *input_smem  = (float*)shared_mem;
-  float *filter_smem = (float*)&shared_mem[16*BC*BN];
+  float *filter_smem = (float*)&shared_mem[16*BC];
 
   short m = 0xFFFF;
   if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
@@ -240,6 +256,13 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   prefetch_input_tile(A, img_tile, in_h, in_w, tiles_dim, m);
   prefetch_filter_tile(B, filter_tile, filt_k);
 
+  // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+  //     for(int j = 0; j < 16; j++){
+  //       printf( "%f,", img_tile[j]);
+  //     }
+  //     printf("\n");
+  //   }
+
   float *input_frag_buffer  = (float*) (input_frag+2);
   float4 *filter_frag_buffer = (float4*) (filter_frag+4);
   
@@ -249,6 +272,14 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     A_frag = input_smem  + threadIdx.y*BC;
     B_frag = (float4*) (filter_smem + threadIdx.y*BC*BK);
 
+    // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+    //     printf("A %d, [", iter);
+    //     for(int j = 0; j < 16; j++){
+    //       printf( "%f,", img_tile[j]);
+    //     }
+    //     printf("]\n");
+    //   }
+
     load_and_transform_input_tile(img_tile, input_smem, in_h, in_w,
                  tiles_dim, in_c, tile_size,
                  tiles_2d_dim, tile_2d_s);
@@ -256,8 +287,22 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
     __syncthreads();
 
+    if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+        // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+        printf("iter: %d, \n ",iter);
+        for(int i = 0; i < 16; i++){
+          printf("%d ,[", i);
+          for(int j = 0; j < 8; j++){
+            printf( "%f,", input_smem[i*BC + j]);
+          }
+        printf("]\n");
+        }
+      }
+     
+
     prefetch_input_frag(input_frag, A_frag, iter, frag_offset);
     prefetch_filter_frag(filter_frag, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
+
     
     #pragma unroll
     for(int i=0; i<BC; i++){
@@ -271,8 +316,16 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
         prefetch_input_frag(input_frag_buffer, A_frag, iter, frag_offset);
         prefetch_filter_frag(filter_frag_buffer, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
       }
-
+     
       outer_product(input_frag, filter_frag, accumulator);
+
+        // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+        //   printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[0][0]);
+          // for(int j = 0; j < 16*8; j++){
+          //   printf( "%f,", input_smem[i]);
+          // }
+          // printf("\n")
+        // }
 
       swap_input = input_frag;
       input_frag = input_frag_buffer;

@@ -18,6 +18,7 @@
 #include <cstdlib>
 #include <vector>
 #include <math.h>
+#include <float.h>
 #include <cuda.h>
 #include <omp.h>
 
@@ -132,7 +133,8 @@ __global__ void dev_const(float *px, float k, int n) {
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = tid % 2 ? k : k+1;
+    // px[tid] = tid % 2 ? k : k+1;
+    px[tid] = k;
 }
 
 __global__ void dev_iota(float *px, int n) {
@@ -180,11 +182,21 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
   float max_error = 0;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
+      //  if(k == 0)
+      //     printf("[");
         for (j = 0; j < len; j++) {
         for (m = 0; m < n; m++) {
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
+            // if(k == 0){
+              // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
+              // A[k*len*len*n + i*len*n + j*n + m],
+              // B[m*len*len*channel + k*len*len + i*len + j], diff);              
+            //   printf("(%f, %f)", 
+            //   A[k*len*len*n + i*len*n + j*n + m],
+            //   B[m*len*len*channel + k*len*len + i*len + j]);              
+            // }    
             if (diff > 1.e-4){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
@@ -196,6 +208,8 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
             max_error = diff;
         }
         }
+      // if(k == 0)
+      //   printf("]\n"); 
     }
   }
   printf("[max_error: %f][error_cnt: %d] of %d\n", max_error, error_cnt, n*len*len*channel*shift);
@@ -237,11 +251,28 @@ cudaError_t init_data(float *in_data, float *in_data_open, float *filt_data, flo
 
   n = filt_k*filt_c*filt_h*filt_w;
   dim3 dimGrid_f = dim3((n + dimBlock.x -1)/dimBlock.x);
-  // dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 1.f, n);
-  dev_iota<<<dimGrid_f, dimBlock>>>(filt_data, n);
+  dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 2.0f, n);
+  // dev_iota<<<dimGrid_f, dimBlock>>>(filt_data, n);
   data_cpy<<<dim3(filt_k, filt_w, filt_h), dim3(filt_c)>>>(filt_data_open, filt_data, filt_w, filt_h, filt_c, filt_k);
 
   return cudaGetLastError();
+}
+
+
+void find_minmax(const float *val, const int l, float *mi, float *mx, int *mi_i, int *mx_i){
+  *mi = FLT_MAX;
+  *mx = -FLT_MAX;
+  for(int i= 0; i < l; i++){
+      if((*mi) > val[i]){
+           (*mi) = val[i];
+           (*mi_i) = i;
+      }
+      if((*mx) < val[i]){
+           (*mx) = val[i];
+           (*mx_i) = i;
+      }
+  }
+
 }
 
 
@@ -306,6 +337,10 @@ int main(int argc, char *argv[]) {
   out_c = filt_k; // Number of feature maps per output
   out_h = in_h;   // Height of each feature map
   out_w = in_w;   // Width of each feature map
+
+
+	float mi, mx;
+	int mi_i, mx_i;
 
   float *in_data_open;
   float *filt_data_open, *workspace;
@@ -443,7 +478,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 20;
+  int iterations = 0;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
@@ -498,6 +533,13 @@ int main(int argc, char *argv[]) {
       *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
   cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
   cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+
+
+  find_minmax(tmp_openCNN, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
+	printf("openCNN: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
+  find_minmax(tmp_cudnn, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
+	printf("cudnn: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
+	
   
   output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
   free(tmp_openCNN); free(tmp_cudnn); 
