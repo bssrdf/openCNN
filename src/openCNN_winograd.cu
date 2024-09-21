@@ -472,7 +472,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 0;
+  int iterations = 20;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h, out_w, out_n, out_c, out_data, workspace,
@@ -531,10 +531,10 @@ int main(int argc, char *argv[]) {
 	int mi_i, mx_i;
  
 
-  find_minmax(tmp_openCNN, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
-	printf("openCNN: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
-  find_minmax(tmp_cudnn, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
-	printf("cudnn: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
+  // find_minmax(tmp_openCNN, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
+	// printf("openCNN: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
+  // find_minmax(tmp_cudnn, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
+	// printf("cudnn: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
 
   free(tmp_openCNN); free(tmp_cudnn); 
 

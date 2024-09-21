@@ -205,7 +205,7 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
               // std::exit(1);
             }
             if (diff > max_error)
-            max_error = diff;
+               max_error = diff;
         }
         }
       // if(k == 0)

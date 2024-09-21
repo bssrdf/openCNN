@@ -47,12 +47,12 @@ __device__ __forceinline__ void  transform_output_tile(float2 *pOutputs, float2 
     //          threadIdx.x, threadIdx.y, j, At[4+j].y, C_tile[4+j].y, C_tile[8+j].y,  C_tile[12+j].y);
   }
 
-  if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
-      printf("round, %d, [", round);
-      for(int i = 0; i < 8; ++i)
-        printf(" (%f, %f) ", At[i].x, At[i].y );
-      printf("]\n");   
-    }
+  // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+    //   printf("round, %d, [", round);
+    //   for(int i = 0; i < 8; ++i)
+    //     printf(" (%f, %f) ", At[i].x, At[i].y );
+    //   printf("]\n");   
+    // }
 
 
   #pragma unroll

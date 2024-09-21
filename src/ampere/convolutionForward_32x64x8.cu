@@ -278,8 +278,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
       }
 
       outer_product(input_frag, filter_frag, accumulator);
-      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
-          printf("A %d, %f, %f, %f, %f \n", iter, i, accumulator[0][0].x, accumulator[0][0].y ,accumulator[0][0].z ,accumulator[0][0].w);
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
+      //     printf("A %d, %f, %f, %f, %f \n", iter, i, accumulator[0][0].x, accumulator[0][0].y ,accumulator[0][0].z ,accumulator[0][0].w);
 
       swap = input_frag;
       input_frag = input_frag_buffer;
