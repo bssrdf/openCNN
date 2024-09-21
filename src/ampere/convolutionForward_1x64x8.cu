@@ -153,7 +153,7 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
   
   // load one input tile
   int c_tensor = (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*in_w*2 
-      + threadIdx.y*(in_h*in_w) + threadIdx.x - in_w;
+      + threadIdx.y*(in_h*in_w) + threadIdx.x - (in_w+1);
   // if(threadIdx.x/in_n != 0){
   //   printf(" %d, %d, %d, %d \n", blockIdx.x, blockIdx.y,  threadIdx.x, threadIdx.y);
   // }

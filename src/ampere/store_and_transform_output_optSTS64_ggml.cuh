@@ -147,8 +147,8 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
   //   }
   // }
 
-  int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + 
-                (blockIdx.y/tiles_dim)*out_w*2 + (idx+threadIdx.y*8)*c_glb_offset;
+  int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim) + 
+                (blockIdx.y/tiles_dim)*out_w + (idx+threadIdx.y*8)*c_glb_offset;
   
   if(threadIdx.x < 8){
     #pragma unroll
