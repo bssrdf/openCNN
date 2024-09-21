@@ -193,9 +193,9 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-            //   printf("(%f, %f)", 
+            //   printf("(%.0f, %.0f, %d, %d)", 
             //   A[k*len*len*n + i*len*n + j*n + m],
-            //   B[m*len*len*channel + k*len*len + i*len + j]);              
+            //   B[m*len*len*channel + k*len*len + i*len + j], j, i);              
             // }    
             if (diff > 1.e-4){ //1e-4
               error_cnt++;
@@ -208,8 +208,8 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
                max_error = diff;
         }
         }
-      // if(k == 0)
-      //   printf("]\n"); 
+        // if(k == 0)
+        //   printf("]\n"); 
     }
   }
   printf("[max_error: %f][error_cnt: %d] of %d\n", max_error, error_cnt, n*len*len*channel*shift);
