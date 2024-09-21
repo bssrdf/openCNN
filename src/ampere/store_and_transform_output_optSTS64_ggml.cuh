@@ -25,14 +25,14 @@ extern "C"
 // there are only 4KB (16 element  * 64 in K) to be transformed, so smem is enough (no need to do it in 4 rounds)
 // each thread row handles two elements (there are 8 rows, so 16 elements) 
 // threadIdx.y        elements 
-//    0                0, 2
-//    1                1, 3 
-//    2                4, 6 
-//    3                5, 7 
-//    4                8, 10
-//    5                9, 11
-//    6                12, 14
-//    7                13, 15 
+//    0                0, 8
+//    1                1, 9 
+//    2                2, 10 
+//    3                3, 11 
+//    4                4, 12
+//    5                5, 13
+//    6                6, 14
+//    7                7, 15 
 // within each row, each thread's accumulator has 2*8 values, 
 // the 1st 8 for first element, the last 8 for 2nd element
 // 0th thread: 0-3, 32-35        same for 2nd element
@@ -97,12 +97,17 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
   //    }
   // }
 
-  int idx = threadIdx.y % 2 ? threadIdx.y * 2 - 1 : threadIdx.y * 2; 
-  int idx1 = idx + 2;
+  // int idx = threadIdx.y % 2 ? threadIdx.y * 2 - 1 : threadIdx.y * 2; 
+  int idx = threadIdx.y; 
+  int idx1 = idx + 8;
   acumm1 =  threadIdx.x / 2;
   // use only the first 8 even threads
   if(threadIdx.x % 2 == 0 && threadIdx.x < 16){
     for(int i = 0;  i < 4; i++){
+      // output_smem[(4*acumm1 + i)*16 + idx      ] = acumm_smem[0][i];
+      // output_smem[(4*acumm1 + i)*16 + idx  + acumm4] = acumm_smem[0][i+4];
+      // output_smem[(4*acumm1 + i)*16 + idx1     ] = acumm_smem[1][i]; 
+      // output_smem[(4*acumm1 + i)*16 + idx1 + acumm4] = acumm_smem[1][i+4];
       output_smem[(4*acumm1 + i)*16 + idx      ] = acumm_smem[0][i];
       output_smem[(4*acumm1 + i)*16 + idx  + acumm4] = acumm_smem[0][i+4];
       output_smem[(4*acumm1 + i)*16 + idx1     ] = acumm_smem[1][i]; 
@@ -118,14 +123,14 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
   }  
   __syncthreads();
 
-  if( blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
-    for(int i = 0; i < BC; ++i){
-      printf("%d, [", i);    
-      for(int j = 0; j < 16; ++j)
-        printf(" %f, ", output_smem[i*16+j]);
-      printf("]\n");   
-    }
-  }
+  // if( blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+  //   for(int i = 0; i < BC; ++i){
+  //     printf("%d, [", i);    
+  //     for(int j = 0; j < 16; ++j)
+  //       printf(" %f, ", output_smem[i*16+j]);
+  //     printf("]\n");   
+  //   }
+  // }
    
   // now smem contains all 64 4x4 tiles with elements of each tile contiguous 
 
@@ -157,16 +162,16 @@ __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *
       x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
       if(mask&(1<<(i*2))){
         C[x1 + c_tensor] = At[x] + At[x+1] + At[x+2];      
-        if(x1+c_tensor == 1)
-          printf("X (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
-              threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
+        // if(x1+c_tensor == 1)
+        //   printf("X (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
+        //       threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
       }
 
       if(mask&(1<<(i*2+1))){
         C[x1 + c_tensor + 1] = At[x+1] - At[x+2] - At[x+3];    
-        if(x1+c_tensor + 1 == 1)
-          printf("Y (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
-              threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
+        // if(x1+c_tensor + 1 == 1)
+        //   printf("Y (%d, %d,  %d), (%d, %d), %d, %d, %d, %f, %f, %f, %f\n", blockIdx.x, blockIdx.y, blockIdx.z, 
+        //       threadIdx.x, threadIdx.y, i, x, x1, C[x1 + c_tensor], At[x],  At[x+1], At[x+2]);
       }
     } 
   }

@@ -7,7 +7,7 @@ OUT = OPTSTS64
 
 all:
 	nvcc src/openCNN_winograd.cu -lcudnn -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH) -o $(NAME) -D$(OUT)
-	nvcc src/openCNN_winograd_ggml.cu -g -G -lcudnn -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH) -o $(NAME1) -D$(OUT)
+	nvcc src/openCNN_winograd_ggml.cu -lcudnn -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH) -o $(NAME1) -D$(OUT)
 	# nvcc src/openCNN_winograd.cu -m64 -arch=compute_$(ARCH) -code=sm_$(ARCH)-o $(NAME) -D$(OUT)
 
 clean:

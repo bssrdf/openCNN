@@ -242,10 +242,11 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   float accumulator[2][8] = {0.0f};  // Accumulators 
 
   float* A_frag; // Input data pointer
-  int frag_offset = 2* BC; // (2=8/4) SMEM input read offset
+  int frag_offset = 8 * BC; // (2=8/4) SMEM input read offset
 
-  float4 *B_frag; // Filter data pointer
-  int f_frag_offset = 2* (BC*BK); // (2=8/4) SMEM filter read offset
+  float4 *B_frag; // Filter data pointer  
+  int f_frag_offset = 2 * (BC*BK); // (2=8/4 with 4 being float4) SMEM filter read offset 
+        
 
   float *input_frag  = (float*) input_frag_mem;
   float4 *filter_frag = (float4*) filter_frag_mem;
@@ -287,17 +288,17 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
     __syncthreads();
 
-    if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
-        // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
-        printf("iter: %d, \n ",iter);
-        for(int i = 0; i < 16; i++){
-          printf("%d ,[", i);
-          for(int j = 0; j < 8; j++){
-            printf( "%f,", input_smem[i*BC + j]);
-          }
-        printf("]\n");
-        }
-      }
+    // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+    //     // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+    //     printf("iter: %d, \n ",iter);
+    //     for(int i = 0; i < 16; i++){
+    //       printf("%d ,[", i);
+    //       for(int j = 0; j < 8; j++){
+    //         printf( "%f,", input_smem[i*BC + j]);
+    //       }
+    //     printf("]\n");
+    //     }
+    //   }
      
 
     prefetch_input_frag(input_frag, A_frag, iter, frag_offset);
