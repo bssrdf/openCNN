@@ -51,7 +51,7 @@ extern "C"
 
 
 __device__ __forceinline__ void store_output_tile(float acumm_smem[][8], float *shared_mem, float *C, 
- int out_h, int out_w, int tiles_dim, float* input_frag_mem, float4* filter_frag_mem,  short mask){
+ int out_h, int out_w, int tiles_dim, float4* input_frag_mem, float4* filter_frag_mem,  short mask){
   
 
 

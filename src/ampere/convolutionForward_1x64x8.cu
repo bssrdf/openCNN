@@ -211,11 +211,15 @@ __device__  __forceinline__ void prefetch_filter_frag(float4 *filter_frag, float
   *((float4*) (filter_frag + 3)) = *(B_frag + f_frag_offset + offset2);
 }
 
-__device__  __forceinline__ void prefetch_input_frag(float* input_frag, float *A_frag, int iter, int frag_offset){  
+__device__  __forceinline__ void prefetch_input_frag(float4 *input_frag, float4 *A_frag, int frag_offset){  
   // if(threadIdx.y >= BC) return;
 
-  *input_frag       = *(A_frag); //ld_shared(A_frag + offset1);
-  *(input_frag + 1) = *(A_frag + frag_offset);
+  *((float4*) (input_frag))     = *(A_frag);
+  *((float4*) (input_frag+1))   = *(A_frag+1);
+  *((float4*) (input_frag+2))   = *(A_frag+frag_offset);
+  *((float4*) (input_frag+3))   = *(A_frag+frag_offset+1);
+  // *input_frag       = *(A_frag); //ld_shared(A_frag + offset1);
+  // *(input_frag + 1) = *(A_frag + frag_offset);
 
 }
 
@@ -238,18 +242,18 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   float img_tile[16]; // Prefetch input from GMEM
   float filter_tile[32]; // Prefetch filter from GMEM
 
-  float input_frag_mem[4];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
+  float4 input_frag_mem[4];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
   float4 filter_frag_mem[8]; //2*2 Data to do Outer Product + prefetch f. SMEM (double_buffer)
   float accumulator[2][8] = {0.0f};  // Accumulators 
 
-  float* A_frag; // Input data pointer
-  int frag_offset = 8 * BC; // (2=8/4) SMEM input read offset
+  float4* A_frag; // Input data pointer
+  int frag_offset = 2 * BC; // (2=8/4) SMEM input read offset
 
   float4 *B_frag; // Filter data pointer  
   int f_frag_offset = 2 * (BC*BK); // (2=8/4 with 4 being float4) SMEM filter read offset 
         
 
-  float *input_frag  = (float*) input_frag_mem;
+  // float *input_frag  = (float*) input_frag_mem;
   float4 *filter_frag = (float4*) filter_frag_mem;
 
   float4 *swap_filter;
@@ -265,13 +269,13 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   //     printf("\n");
   //   }
 
-  float *input_frag_buffer  = (float*) (input_frag+2);
+  // float *input_frag_buffer  = (float*) (input_frag+2);
   float4 *filter_frag_buffer = (float4*) (filter_frag+4);
   
   // Mainloop - iterates over the entire K dimension - not unrolled
   for(int iter=0; iter<in_c; iter+=BC){ // Current iteration
 
-    A_frag = input_smem  + threadIdx.y*BC;
+    A_frag =(float4 *)(input_smem  + threadIdx.y*BC);
     B_frag = (float4*) (filter_smem + threadIdx.y*BC*BK);
 
     // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
@@ -302,7 +306,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     //   }
      
 
-    prefetch_input_frag(input_frag, A_frag, iter, frag_offset);
+    prefetch_input_frag(input_frag_mem, A_frag, frag_offset);
+    float *input_frag  = (float*) input_frag_mem;
     prefetch_filter_frag(filter_frag, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
 
     
@@ -310,12 +315,12 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     for(int i=0; i<BC; i++){
 
       if(i<(BC-1)){
-        A_frag += 1;     // This actually moves 1 float (A_frag is float*)
+        // A_frag += 1;     // This actually moves 1 float (A_frag is float*)
                           // 1 float is also of size of one input channel since we only have 1 input   
         B_frag += BK/4;   // This actually moves 16*4=64 floats (B_frag is float4*), 
                           // 64 floats is also of size of one filter channel 
 
-        prefetch_input_frag(input_frag_buffer, A_frag, iter, frag_offset);
+        // prefetch_input_frag(input_frag_buffer, A_frag, iter, frag_offset);
         prefetch_filter_frag(filter_frag_buffer, B_frag, f_frag_offset, access_f_s[0][threadIdx.x], access_f_s[1][threadIdx.x]);
       }
      
@@ -329,10 +334,10 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
           // printf("\n")
         // }
 
-      swap_input = input_frag;
-      input_frag = input_frag_buffer;
-      input_frag_buffer = swap_input;
-
+      // swap_input = input_frag;
+      // input_frag = input_frag_buffer;
+      // input_frag_buffer = swap_input;
+      input_frag++; 
       swap_filter = filter_frag;
       filter_frag = filter_frag_buffer;
       filter_frag_buffer = swap_filter;

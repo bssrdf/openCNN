@@ -13,7 +13,7 @@
 // limitations under the License.
 
 
-__device__  __forceinline__ void outer_product(float input[], float4* filter_frag, float accumulator[][8]){
+__device__  __forceinline__ void outer_product(float *input, float4* filter_frag, float accumulator[][8]){
 
     // if(input[0] < 0.f)
     //     printf(" A (%d, %d,  %d), (%d, %d), %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
@@ -50,15 +50,15 @@ __device__  __forceinline__ void outer_product(float input[], float4* filter_fra
     accumulator[0][7] += input[0]*filter_frag[1].w;
   
     //////
-    accumulator[1][0] += input[1]*filter_frag[2].x;
-    accumulator[1][1] += input[1]*filter_frag[2].y;
-    accumulator[1][2] += input[1]*filter_frag[2].z;
-    accumulator[1][3] += input[1]*filter_frag[2].w;
+    accumulator[1][0] += input[8]*filter_frag[2].x;
+    accumulator[1][1] += input[8]*filter_frag[2].y;
+    accumulator[1][2] += input[8]*filter_frag[2].z;
+    accumulator[1][3] += input[8]*filter_frag[2].w;
     
     //
-    accumulator[1][4] += input[1]*filter_frag[3].x;
-    accumulator[1][5] += input[1]*filter_frag[3].y;
-    accumulator[1][6] += input[1]*filter_frag[3].z;
-    accumulator[1][7] += input[1]*filter_frag[3].w;
+    accumulator[1][4] += input[8]*filter_frag[3].x;
+    accumulator[1][5] += input[8]*filter_frag[3].y;
+    accumulator[1][6] += input[8]*filter_frag[3].z;
+    accumulator[1][7] += input[8]*filter_frag[3].w;
                                         
 }
