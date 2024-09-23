@@ -30,7 +30,7 @@
 
 #include <cudnn.h>
 
-#include "config_ggml.hpp"
+#include "config_32Tx64x8.hpp"
 
 #ifdef BASE
   #if __CUDA_ARCH__ < 800
@@ -42,7 +42,7 @@
   // #if __CUDA_ARCH__ < 800
   // #include "convolutionForward_32x64x8.cu"  
   // #else 
-  #include "ampere/convolutionForward_1x64x8.cu"
+  #include "ampere/convolutionForward_32Tx64x8.cu"
   // #include "ampere/convolutionForward_40x40x8.cu"
   // #endif
 #endif
@@ -133,8 +133,18 @@ __global__ void dev_const(float *px, float k, int n) {
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    // px[tid] = tid % 2 ? k : k+1;
     px[tid] = k;
+}
+
+__global__ void dev_const1(float *px, int n) {
+  int tid = threadIdx.x + blockIdx.x * blockDim.x;
+ 
+  curandState state;
+  curand_init(clock64(), tid, 0, &state);
+
+  if (tid < n)
+    px[tid] = tid % (48*48) + 1.f;
+    // px[tid] = k;
 }
 
 __global__ void dev_iota(float *px, int n) {
@@ -223,8 +233,8 @@ cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h
                                   int alpha, int m){
   cudaError_t out;
 
-  if(BK==64 && BC==8){
-    out = convolutionForward_1x64x8(k, in_h, in_w, w, out_h,
+  if(BN==32 && BK==64 && BC==8){
+    out = convolutionForward_32Tx64x8(k, in_h, in_w, w, out_h,
                 out_w, out_c, C, Ww,
                 tiles_dim, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
   // // } else 
@@ -246,7 +256,7 @@ cudaError_t init_data(float *in_data, float *in_data_open, float *filt_data, flo
   dim3 dimGrid((n + dimBlock.x -1)/dimBlock.x);
 
   // dev_iota<<<dimGrid, dimBlock>>>(in_data, n);
-  dev_const<<<dimGrid, dimBlock>>>(in_data, 1.5f, n);
+  dev_const1<<<dimGrid, dimBlock>>>(in_data, n);
   data_cpy<<<dim3(in_n, in_w, in_h), in_c>>>(in_data_open, in_data, in_w, in_h, in_c, in_n);
 
   n = filt_k*filt_c*filt_h*filt_w;
@@ -440,8 +450,9 @@ int main(int argc, char *argv[]) {
         &out_data_cudnn, out_n * out_c * out_h * out_w * sizeof(float)));   
 
   // =================== Query convolution forward algorithm =================== //
-  cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
+  // cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
+  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
 
   // =================== Query workspace and allocate =================== //
