@@ -59,7 +59,12 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
   #pragma unroll
   for(int i=0; i<2; i++){
     x = i*4;
-    x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
+    // x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
+    x1 = i*((out_w-(out_w%2)) + (out_w%2)/2);
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+      printf("round, %d, %d, %d, %d, %d\n", round, i, x1, c_tensor, x1+c_tensor);
+    }
+
     if(mask&(1<<(i*2))){
       pOutputs[x1 + c_tensor].x = At[x].x + At[x+1].x + At[x+2].x;
       pOutputs[x1 + c_tensor].y = At[x].y + At[x+1].y + At[x+2].y;
