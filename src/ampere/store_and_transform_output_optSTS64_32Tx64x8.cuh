@@ -79,7 +79,7 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
 }
 
 __device__ __forceinline__ void store_output_tile(float4 acumm_smem[][16], float *shared_mem, float *C, 
-int out_h, int out_w, int tiles_dim, float4 *input_frag_mem, float4* filter_frag_mem,  unsigned short mask){
+int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, float4* filter_frag_mem,  unsigned short mask){
   
   float2 *output_smem = (float2 *) shared_mem;
   float2 *accumulator = (float2 *) acumm_smem;
@@ -89,8 +89,10 @@ int out_h, int out_w, int tiles_dim, float4 *input_frag_mem, float4* filter_frag
   float2 *At = (float2*) filter_frag_mem;
 
   mask = 0x000F;
-  if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003;
-  if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005;
+  // if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003; // pad bottom row
+  // if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005; // pad right col
+  if(blockIdx.y==gridDim.y-1 && (threadIdx.x / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
+  if(blockIdx.x==gridDim.x-1 && (threadIdx.x % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
   
   // output transpose step
   int t=0;
@@ -109,8 +111,18 @@ int out_h, int out_w, int tiles_dim, float4 *input_frag_mem, float4* filter_frag
   int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
-  int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*out_w*2 + blockIdx.x*BN + (threadIdx.x%16)*2+
-                ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
+  // int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*out_w*2 + blockIdx.x*BN + (threadIdx.x%16)*2+
+  //               ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
+
+  int tx = out_w / gridDim.x, ty = out_h / gridDim.y;  
+  // int c_tile = blockIdx.x * tx  + blockIdx.y * in_w * ty; 
+  // int c_tensor = c_tile + (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * in_w * 2 + 
+  //               threadIdx.y*(in_h*in_w) - (in_w+1);
+
+  int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * tx  + blockIdx.y * out_w * ty +
+                 (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
+                 ((threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
+
   c_tensor/=2; 
 
   // for(int i = 0;i < 2; i++){
@@ -173,6 +185,7 @@ int out_h, int out_w, int tiles_dim, float4 *input_frag_mem, float4* filter_frag
       C_tile[i].x = shared_mem[i*offset + init];
       C_tile[i].y = shared_mem[i*offset + init + 32];
     }
+
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
     //   for(int i = 0; i < 16; ++i)

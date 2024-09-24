@@ -244,7 +244,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
 
   extern __shared__ float shared_mem[];
   float *input_smem  = (float*)shared_mem;
-  float *filter_smem = (float*)&shared_mem[16*BC];
+  float *filter_smem = (float*)&shared_mem[16*BC*BN];
 
   unsigned short m = 0xFFFF;
   // if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
@@ -264,7 +264,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   float img_tile[16]; // Prefetch input from GMEM
   float filter_tile[32]; // Prefetch filter from GMEM
 
-  float4 input_frag_mem[4];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
+  float4 input_frag_mem[8];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
   float4 filter_frag_mem[8]; //2*2 Data to do Outer Product + prefetch f. SMEM (double_buffer)
   float4 accumulator[2][16] = {0.0f};  // Accumulators 
 
@@ -347,13 +347,13 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
      
       outer_product(input_frag, filter_frag, accumulator);
 
-        // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
-        //   printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[0][0]);
-          // for(int j = 0; j < 16*8; j++){
-          //   printf( "%f,", input_smem[i]);
-          // }
-          // printf("\n")
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+      //   printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[0].x, filter_frag[0].x, accumulator[0][0].x);
+        // for(int j = 0; j < 16*8; j++){
+        //   printf( "%f,", input_smem[i]);
         // }
+        // printf("\n")
+      // }
 
       swap_input = input_frag;
       input_frag = input_frag_buffer;
@@ -377,7 +377,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   }
 
   // Transpose, transform and store accumulated result
-  store_output_tile(accumulator, shared_mem, C, out_h, out_w, tiles_dim, input_frag_mem, filter_frag_mem, m);
+  store_output_tile(accumulator, shared_mem, C, out_h, out_w, tiles_dim, X, Y, input_frag_mem, filter_frag_mem, m);
                      
 }
 
