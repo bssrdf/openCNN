@@ -20,9 +20,9 @@ extern "C"
 {
     
 __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
-int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
+int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2, short mask, int out_w)
 {                     
-  c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
+  // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
   int x, x1;
 
   #pragma unroll
@@ -61,13 +61,13 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
     x = i*4;
     // x1 = i*((tiles_dim-(out_w%2)) + (out_w%2)/2);
     x1 = i*((out_w-(out_w%2)) + (out_w%2)/2);
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
-      printf("round, %d, %d, %d, %d, %d\n", round, i, x1, c_tensor, x1+c_tensor);
-    }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+    //   printf("round, %d, %d, %d, %d, %d\n", round, i, x1, c_tensor, x1+c_tensor);
+    // }
 
     if(mask&(1<<(i*2))){
-      pOutputs[x1 + c_tensor] = At[x].x + At[x+1].x + At[x+2].x;
-      pOutputs[x1 + c_tensor+4] = At[x].y + At[x+1].y + At[x+2].y;
+      pOutputs[x1 + c_tensor + i1] = At[x].x + At[x+1].x + At[x+2].x;
+      pOutputs[x1 + c_tensor + i2] = At[x].y + At[x+1].y + At[x+2].y;
       // if(pOutputs[x1 + c_tensor].x < 0.f)
       //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].x, At[x].x, At[x+1].x, At[x+2].x);
@@ -77,8 +77,8 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
     }
 
     if(mask&(1<<(i*2+1))){
-      pOutputs[x1 + c_tensor + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
-      pOutputs[x1 + c_tensor + 5] = At[x+1].y - At[x+2].y - At[x+3].y;
+      pOutputs[x1 + c_tensor + i1 + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
+      pOutputs[x1 + c_tensor + i2 + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
   } 
 }
@@ -126,10 +126,10 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   //               threadIdx.y*(in_h*in_w) - (in_w+1);
 
   int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * tx  + blockIdx.y * out_w * ty +
-                 (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
+                //  (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
                  ((threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
 
-  c_tensor/=2; 
+  // c_tensor/=2; 
 
   // for(int i = 0;i < 2; i++){
   //     for(int j = 0; j < 16; i++){
@@ -159,27 +159,31 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     *( (float2*) (output_smem + idx + acumm2) )  = *(accumulator+t+2);
     *( (float2*) (output_smem + idx + acumm2 + 16) )  = *(accumulator+t+3); // float 4, t+1
 
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 == target){
-      printf("A. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
-             threadIdx.x, threadIdx.y, idx, acumm1);
-    }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 + 16 == target){
-      printf("B. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
-             threadIdx.x, threadIdx.y, idx, acumm1);
-    }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 == target){
-      printf("C. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
-             threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
-    }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 + 16 == target){
-      printf("D. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
-             threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
-    }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 == target){
+    //   printf("A. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, idx, acumm1);
+    // }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 + 16 == target){
+    //   printf("B. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, idx, acumm1);
+    // }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 == target){
+    //   printf("C. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
+    // }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 + 16 == target){
+    //   printf("D. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+    //          threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
+    // }
 
     *( (float2*) (output_smem + idx2 + acumm1) ) = *(accumulator+t+32);
     *( (float2*) (output_smem + idx2 + acumm1 + 16) ) = *(accumulator+t+33); // float 4, t+16
     *( (float2*) (output_smem + idx2 + acumm2) ) = *(accumulator+t+34);
     *( (float2*) (output_smem + idx2 + acumm2 + 16) ) = *(accumulator+t+35); // float 4, t+17
+
+    // the above 8 float2 will be consumed by theadIdx.y = [0,1,2,3]
+
+    // the following 8 float2 will be consumed by theadIdx.y = [4,5,6,7]
 
     *( (float2*) (output_smem + idx + acumm4 + acumm1) )  = *(accumulator+t+4); 
     *( (float2*) (output_smem + idx + acumm4 + acumm1 + 16) )  = *(accumulator+t+5); // float 4, t+2
@@ -203,16 +207,48 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   //     printf(" %f, ", shared_mem[i]);
   //   printf("]\n");   
   // }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0)      
+
+    // for output transformation, the role of threadIdx.y changes again:
+    // in the main loop, different threadIdx.y deal with different element of the 4x4 tile 
+    // here, they are for 4 different groups of lane ids from optSTS64 layout
+    // for init (and init+32), we need to identify its tile number (0-31) within the supertile     
+    // first, from init, find out from which threadIdx.x it comes.
+    int idy = init - threadIdx.x;
+    if(idy > 204) idy -= BN_p*16*2; 
+    int idx = idy + threadIdx.x;
+    if(idx % 2 == 0)
+        idx = idx / 2;
+    else
+        idx = (idx-1) / 2;
+    int l = laneid[idx];
+    // now we got l, which is the land id which computed accumulated sum for the tile element 
+    // each lane id (or threadIdx.x) computed 8 tiles which are distributed into 4 locations spreading
+    // over the smem. We need to find which of the 8 the current tile is.   
+    // use tileid table to figure out
+    int id1 = tileid[0][l];
+    id1 = (id1 % tw) * 2 + (id1 / tw) * out_w * 2; 
+
+    // for 2nd tile
+    idx = idy + threadIdx.x + 32;
+    if(idx % 2 == 0)
+        idx = idx / 2;
+    else
+        idx = (idx-1) / 2;
+    l = laneid[idx];
+    int id2 = tileid[1][l];
+    id2 = (id2 % tw) * 2 + (id2 / tw) * out_w * 2; 
+
+    int tx = 0, ty=1; 
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
       printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = shared_mem[i*offset + init];
       C_tile[i].y = shared_mem[i*offset + init + 32];
-      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0){
+      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty){
         printf("%d,", i*offset + init);
       }
     }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0)      
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
       printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
@@ -223,7 +259,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     // }
 
     // transform output tiles
-    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, mask, out_w);
+    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
     __syncthreads();
   }
 }
