@@ -24,7 +24,7 @@
 #else
 // #include "store_and_transform_output_optSTS64.cuh"
 #include "store_and_transform_output_optSTS64_32Tx64x8.cuh"
-#include "../outer_product_32Tx64x8.cuh"
+#include "../outer_product.cuh"
 #endif
 
 #ifdef _noWALL_
@@ -336,8 +336,8 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     for(int i=0; i<BC; i++){
 
       if(i<(BC-1)){
-        A_frag += BN/4;     // This actually moves 1 float (A_frag is float*)
-                          // 1 float is also of size of one input channel since we only have 1 input   
+        A_frag += BN/4;     // This actually moves 32 float (A_frag is float4*)
+                          // 32 float is also of size of supertile of one input channel   
         B_frag += BK/4;   // This actually moves 16*4=64 floats (B_frag is float4*), 
                           // 64 floats is also of size of one filter channel 
 

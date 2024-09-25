@@ -192,21 +192,21 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
   float max_error = 0;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
-      //  if(k == 0)
-      //     printf("[");
+       if(k == 0)
+          printf("[");
         for (j = 0; j < len; j++) {
         for (m = 0; m < n; m++) {
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
-            // if(k == 0){
+            if(k == 0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-            //   printf("(%.0f, %.0f, %d, %d)", 
-            //   A[k*len*len*n + i*len*n + j*n + m],
-            //   B[m*len*len*channel + k*len*len + i*len + j], j, i);              
-            // }    
+              printf("(%.0f, %.0f, %d, %d)", 
+              A[k*len*len*n + i*len*n + j*n + m],
+              B[m*len*len*channel + k*len*len + i*len + j], j, i);              
+            }    
             if (diff > 1.e-4){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
@@ -218,8 +218,8 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
                max_error = diff;
         }
         }
-        // if(k == 0)
-        //   printf("]\n"); 
+        if(k == 0)
+          printf("]\n"); 
     }
   }
   printf("[max_error: %f][error_cnt: %d] of %d\n", max_error, error_cnt, n*len*len*channel*shift);

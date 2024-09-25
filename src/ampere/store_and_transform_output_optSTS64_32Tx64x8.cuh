@@ -19,7 +19,7 @@
 extern "C"
 {
     
-__device__ __forceinline__ void  transform_output_tile(float2 *pOutputs, float2 *C_tile, float2 *At, 
+__device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
 int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
 {                     
   c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
@@ -66,8 +66,8 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
     }
 
     if(mask&(1<<(i*2))){
-      pOutputs[x1 + c_tensor].x = At[x].x + At[x+1].x + At[x+2].x;
-      pOutputs[x1 + c_tensor].y = At[x].y + At[x+1].y + At[x+2].y;
+      pOutputs[x1 + c_tensor] = At[x].x + At[x+1].x + At[x+2].x;
+      pOutputs[x1 + c_tensor+4] = At[x].y + At[x+1].y + At[x+2].y;
       // if(pOutputs[x1 + c_tensor].x < 0.f)
       //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].x, At[x].x, At[x+1].x, At[x+2].x);
@@ -77,8 +77,8 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, short mask, int out_w)
     }
 
     if(mask&(1<<(i*2+1))){
-      pOutputs[x1 + c_tensor].x = At[x+1].x - At[x+2].x - At[x+3].x;
-      pOutputs[x1 + c_tensor].y = At[x+1].y - At[x+2].y - At[x+3].y;
+      pOutputs[x1 + c_tensor + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
+      pOutputs[x1 + c_tensor + 5] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
   } 
 }
@@ -116,7 +116,8 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
-  // int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*out_w*2 + blockIdx.x*BN + (threadIdx.x%16)*2+
+  // int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*out_w*2 + 
+  //               blockIdx.x*BN + (threadIdx.x%16)*2+
   //               ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
 
   int tx = out_w / gridDim.x, ty = out_h / gridDim.y;  
@@ -148,6 +149,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   // }    
 
 
+  int target = 16;  
 
   #pragma unroll                                  
   for(int round=0; round<4; round++){
@@ -156,6 +158,23 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     *( (float2*) (output_smem + idx + acumm1 + 16) )  = *(accumulator+t+1); // float 4, t
     *( (float2*) (output_smem + idx + acumm2) )  = *(accumulator+t+2);
     *( (float2*) (output_smem + idx + acumm2 + 16) )  = *(accumulator+t+3); // float 4, t+1
+
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 == target){
+      printf("A. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+             threadIdx.x, threadIdx.y, idx, acumm1);
+    }
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm1 + 16 == target){
+      printf("B. (%d, %d, %d, %d, %d) %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+             threadIdx.x, threadIdx.y, idx, acumm1);
+    }
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 == target){
+      printf("C. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+             threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
+    }
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && idx + acumm2 + 16 == target){
+      printf("D. (%d, %d, %d, %d, %d) %d, %d, %d\n ",blockIdx.x, blockIdx.y, blockIdx.z, 
+             threadIdx.x, threadIdx.y, idx, acumm1, acumm2);
+    }
 
     *( (float2*) (output_smem + idx2 + acumm1) ) = *(accumulator+t+32);
     *( (float2*) (output_smem + idx2 + acumm1 + 16) ) = *(accumulator+t+33); // float 4, t+16
@@ -184,12 +203,17 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   //     printf(" %f, ", shared_mem[i]);
   //   printf("]\n");   
   // }
-
-    
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0)      
+      printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = shared_mem[i*offset + init];
       C_tile[i].y = shared_mem[i*offset + init + 32];
+      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0){
+        printf("%d,", i*offset + init);
+      }
     }
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 16  && threadIdx.y == 0)      
+      printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
@@ -199,7 +223,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     // }
 
     // transform output tiles
-    transform_output_tile(C_out, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, mask, out_w);
+    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, mask, out_w);
     __syncthreads();
   }
 }
