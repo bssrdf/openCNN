@@ -4,7 +4,8 @@ echo "in_n,in_c,in_h,filt_k,filt_w,openCNN_sec,openCNN_flops,cuDNN_sec,cuDNN_flo
 # ../wgrad 64 64 224 224 64 64 3 3
 # ../wgrad 64 10 224 224 64 10 3 3
 #  ../wgrad 32 32 24 24 64 32 3 3
-../ggrad 1 32 24 24 64 32 3 3
+# ../ggrad 1 32 24 24 64 32 3 3
+../ggrad32Tx64x8 1 32 24 24 64 32 3 3
 # ../wgrad 256 8 160 160 64 8 3 3
 # ../wgrad 64 5 224 224 64 5 3 3
 #../wgrad 32 8 1024 1024 64 8 3 3

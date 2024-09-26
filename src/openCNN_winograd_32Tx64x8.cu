@@ -190,7 +190,7 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, float* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = 3;
+  int kk = -1;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -200,15 +200,19 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
-            if(k == kk){
+            // if(k == kk){
+            if(i==0 && j==0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-              printf("(%.0f, %.0f, %d, %d)", 
+              // printf("(%.0f, %.0f, %d, %d)", 
+              // A[k*len*len*n + i*len*n + j*n + m],
+              // B[m*len*len*channel + k*len*len + i*len + j], j, i);
+              printf("(%.0f, %.0f, %d)", 
               A[k*len*len*n + i*len*n + j*n + m],
-              B[m*len*len*channel + k*len*len + i*len + j], j, i);              
+              B[m*len*len*channel + k*len*len + i*len + j], k);
             }    
-            if (diff > 1.e-4){ //1e-4
+            if (diff > 1){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],

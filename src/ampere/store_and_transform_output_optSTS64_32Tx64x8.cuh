@@ -22,7 +22,7 @@ extern "C"
 __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
 int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2, short mask, int out_w)
 {                     
-  // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
+  c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
   int x, x1;
 
   #pragma unroll
