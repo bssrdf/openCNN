@@ -20,7 +20,8 @@ extern "C"
 {
     
 __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
-int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2, short mask, int out_w)
+int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2,
+unsigned short mask1, unsigned short mask2, int out_w)
 {                     
   // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
   c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset;
@@ -66,9 +67,12 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2, short 
     //   printf("round, %d, %d, %d, %d, %d\n", round, i, x1, c_tensor, x1+c_tensor);
     // }
 
-    if(mask&(1<<(i*2))){
+    if(mask1&(1<<(i*2))){
       pOutputs[x1 + c_tensor + i1] = At[x].x + At[x+1].x + At[x+2].x;
+    }
+    if(mask2&(1<<(i*2))){
       pOutputs[x1 + c_tensor + i2] = At[x].y + At[x+1].y + At[x+2].y;
+
       // if(pOutputs[x1 + c_tensor].x < 0.f)
       //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].x, At[x].x, At[x+1].x, At[x+2].x);
@@ -76,12 +80,46 @@ int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2, short 
       //   printf(" B, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].y, At[x].y, At[x+1].y, At[x+2].y);
     }
-
-    if(mask&(1<<(i*2+1))){
+    if(mask1&(1<<(i*2+1))){
       pOutputs[x1 + c_tensor + i1 + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
+    }
+    if(mask2&(1<<(i*2+1))){
       pOutputs[x1 + c_tensor + i2 + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
   } 
+}
+
+__device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim, int tw, int th, int out_w, int out_h){
+
+  unsigned short mask = 0x000F;
+  // if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003; // pad bottom row
+  // if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005; // pad right col
+  // if(blockIdx.y==gridDim.y-1 && (idd / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
+  // if(blockIdx.x==gridDim.x-1 && (idd % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
+  if(tiles_dim % tw == 0 && tiles_dim % th == 0){
+    if(blockIdx.y==gridDim.y-1 && (idd / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
+    if(blockIdx.x==gridDim.x-1 && (idd % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
+  }else if(tiles_dim % tw == 0){
+    int k = out_h % TH;
+    int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
+    if(blockIdx.y==gridDim.y-1 && (idd / tw) == k1-1 && k%2)  mask&=0x0003; // pad bottom row
+    if(blockIdx.y==gridDim.y-1 && (idd / tw) > k1-1) mask &= 0x0; //pad all zeros since this tile does not exist
+  }else if(tiles_dim % th == 0){
+    int k = out_w % TW;
+    int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
+    if(blockIdx.x==gridDim.x-1 && (idd % tw) == k1-1 && k%2)  mask&=0X0005; // pad right col
+    if(blockIdx.x==gridDim.x-1 && (idd % tw) > k1-1)  mask&=0X0; // pad all zeroes
+  }else{
+    int kh = out_h % TH;
+    int kw = out_w % TW;
+    int kh1 =  kh % 2 ? (kh+1)/2 : kh/2; // there could be kh1*kw1 tiles
+    int kw1 =  kw % 2 ? (kw+1)/2 : kw/2;
+    if(blockIdx.y==gridDim.y-1 && (idd / tw) == kh1-1 && kh%2)  mask&=0x0003; // pad bottom row
+    if(blockIdx.x==gridDim.x-1 && (idd % tw) == kw1-1 && kw%2)  mask&=0X0005; // pad right col
+    if(blockIdx.y==gridDim.y-1 && (idd / tw) > kh1-1)  mask &= 0x0; //pad all zeros since this tile does not exist
+    if(blockIdx.x==gridDim.x-1 && (idd % tw) > kw1-1)  mask &= 0X0; // pad all zeroes
+  }
+  return mask;
 }
 
 __device__ __forceinline__ void store_output_tile(float4 acumm_smem[][16], float *shared_mem, float *C, 
@@ -94,11 +132,14 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   float2 *C_tile = (float2*) input_frag_mem;
   float2 *At = (float2*) filter_frag_mem;
 
-  mask = 0x000F;
-  // if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003; // pad bottom row
-  // if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005; // pad right col
-  if(blockIdx.y==gridDim.y-1 && (threadIdx.x / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
-  if(blockIdx.x==gridDim.x-1 && (threadIdx.x % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
+  int idd1 = tileid[0][threadIdx.x];
+  int id1 = (idd1 % tw) * 2 + (idd1 / tw) * out_w * 2;
+  int idd2 = tileid[1][threadIdx.x];
+  int id2 = (idd2 % tw) * 2 + (idd2 / tw) * out_w * 2;
+
+  // unsigned short mask1 = 0x000F;
+  unsigned short mask1 = get_mask(idd1, tiles_dim, tw, th, out_w, out_h);
+  unsigned short mask2 = get_mask(idd2, tiles_dim, tw, th, out_w, out_h);
   
   // output transpose step
   int t=0;
@@ -228,8 +269,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     // over the smem. We need to find which of the 8 the current tile is.   
     // use tileid table to figure out
     // int id1 = tileid[0][l];
-    int id1 = tileid[0][threadIdx.x];
-    id1 = (id1 % tw) * 2 + (id1 / tw) * out_w * 2; 
+
 
     // for 2nd tile
     // idx = idy + threadIdx.x + 32;
@@ -239,8 +279,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     //     idx = (idx-1) / 2;
     // l = laneid[idx];
     // int id2 = tileid[1][l];
-    int id2 = tileid[1][threadIdx.x];
-    id2 = (id2 % tw) * 2 + (id2 / tw) * out_w * 2; 
+
 
     // int tx = 0, ty=1; 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
@@ -263,7 +302,8 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     // }
 
     // transform output tiles
-    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
+    // transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
+    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask1, mask2, out_w);
     __syncthreads();
   }
 }

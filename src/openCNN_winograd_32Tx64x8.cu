@@ -143,7 +143,7 @@ __global__ void dev_const1(float *px, int n) {
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = tid % (48*48) + 1.f;
+    px[tid] = tid % (24*24) + 1.f;
     // px[tid] = k;
 }
 
@@ -200,18 +200,18 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
-            // if(k == kk){
+            if(k == kk){
             // if(i==0 && j==0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-              // printf("(%.0f, %.0f, %d, %d)", 
-              // A[k*len*len*n + i*len*n + j*n + m],
-              // B[m*len*len*channel + k*len*len + i*len + j], j, i);
+              printf("(%.0f, %.0f, %d, %d)", 
+              A[k*len*len*n + i*len*n + j*n + m],
+              B[m*len*len*channel + k*len*len + i*len + j], j, i);
             //   printf("(%.0f, %.0f, %d)", 
             //   A[k*len*len*n + i*len*n + j*n + m],
             //   B[m*len*len*channel + k*len*len + i*len + j], k);
-            // }    
+            }    
             if (diff > 1){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
