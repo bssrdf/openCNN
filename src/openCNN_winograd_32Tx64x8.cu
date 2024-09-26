@@ -201,17 +201,17 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
             // if(k == kk){
-            if(i==0 && j==0){
+            // if(i==0 && j==0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
               // printf("(%.0f, %.0f, %d, %d)", 
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], j, i);
-              printf("(%.0f, %.0f, %d)", 
-              A[k*len*len*n + i*len*n + j*n + m],
-              B[m*len*len*channel + k*len*len + i*len + j], k);
-            }    
+            //   printf("(%.0f, %.0f, %d)", 
+            //   A[k*len*len*n + i*len*n + j*n + m],
+            //   B[m*len*len*channel + k*len*len + i*len + j], k);
+            // }    
             if (diff > 1){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
@@ -380,7 +380,7 @@ int main(int argc, char *argv[]) {
   // =================== openCNN layouts =================== //    
   cudaMemcpyToSymbol(access_f_s, aux, 64*sizeof(int));
   cudaMemcpyToSymbol(access_s, aux2, 64*sizeof(int));
-  cudaMemcpyToSymbol(laneid, lid, 138*sizeof(int));
+  // cudaMemcpyToSymbol(laneid, lid, 138*sizeof(int)); // no need for it now
   cudaMemcpyToSymbol(tileid, tid, 64*sizeof(int));
   #ifndef BASE
     #if defined(OPTLDS64)
@@ -496,7 +496,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 0;
+  int iterations = 20;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
