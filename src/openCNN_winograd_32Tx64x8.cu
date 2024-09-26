@@ -190,16 +190,17 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, float* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
+  int kk = 3;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
-       if(k == 0)
+       if(k == kk)
           printf("[");
         for (j = 0; j < len; j++) {
         for (m = 0; m < n; m++) {
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
                 B[m*len*len*channel + k*len*len + i*len + j]);
-            if(k == 0){
+            if(k == kk){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
@@ -218,7 +219,7 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
                max_error = diff;
         }
         }
-        if(k == 0)
+        if(k == kk)
           printf("]\n"); 
     }
   }

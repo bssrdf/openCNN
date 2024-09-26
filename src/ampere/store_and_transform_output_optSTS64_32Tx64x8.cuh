@@ -213,43 +213,45 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
     // here, they are for 4 different groups of lane ids from optSTS64 layout
     // for init (and init+32), we need to identify its tile number (0-31) within the supertile     
     // first, from init, find out from which threadIdx.x it comes.
-    int idy = init - threadIdx.x;
-    if(idy > 204) idy -= BN_p*16*2; 
-    int idx = idy + threadIdx.x;
-    if(idx % 2 == 0)
-        idx = idx / 2;
-    else
-        idx = (idx-1) / 2;
-    int l = laneid[idx];
+    // int idy = init - threadIdx.x;
+    // if(idy > 204) idy -= BN_p*16*2; 
+    // int idx = idy + threadIdx.x;
+    // if(idx % 2 == 0)
+    //     idx = idx / 2;
+    // else
+    //     idx = (idx-1) / 2;
+    // int l = laneid[idx];
     // now we got l, which is the land id which computed accumulated sum for the tile element 
     // each lane id (or threadIdx.x) computed 8 tiles which are distributed into 4 locations spreading
     // over the smem. We need to find which of the 8 the current tile is.   
     // use tileid table to figure out
-    int id1 = tileid[0][l];
+    // int id1 = tileid[0][l];
+    int id1 = tileid[0][threadIdx.x];
     id1 = (id1 % tw) * 2 + (id1 / tw) * out_w * 2; 
 
     // for 2nd tile
-    idx = idy + threadIdx.x + 32;
-    if(idx % 2 == 0)
-        idx = idx / 2;
-    else
-        idx = (idx-1) / 2;
-    l = laneid[idx];
-    int id2 = tileid[1][l];
+    // idx = idy + threadIdx.x + 32;
+    // if(idx % 2 == 0)
+    //     idx = idx / 2;
+    // else
+    //     idx = (idx-1) / 2;
+    // l = laneid[idx];
+    // int id2 = tileid[1][l];
+    int id2 = tileid[1][threadIdx.x];
     id2 = (id2 % tw) * 2 + (id2 / tw) * out_w * 2; 
 
-    int tx = 0, ty=1; 
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("round, %d, [", round);
+    // int tx = 0, ty=1; 
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = shared_mem[i*offset + init];
       C_tile[i].y = shared_mem[i*offset + init + 32];
-      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty){
-        printf("%d,", i*offset + init);
-      }
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty){
+      //   printf("%d,", i*offset + init);
+      // }
     }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("]\n");   
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
