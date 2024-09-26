@@ -121,7 +121,8 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   //               blockIdx.x*BN + (threadIdx.x%16)*2+
   //               ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
 
-  int tx = out_w / gridDim.x, ty = out_h / gridDim.y;  
+  // int tx = out_w / gridDim.x, ty = out_h / gridDim.y;  
+  int tx = TW, ty = TH;  
   // int c_tile = blockIdx.x * tx  + blockIdx.y * in_w * ty; 
   // int c_tensor = c_tile + (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * in_w * 2 + 
   //               threadIdx.y*(in_h*in_w) - (in_w+1);

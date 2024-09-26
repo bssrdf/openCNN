@@ -25,6 +25,9 @@
 #define BK_GEMM 128
 ///////////////////// For Non-Fused version
 
+#define TW 8
+#define TH 16
+
 #ifdef OPTSTS64_CMP
 #define BN_p 128
 #elif BASE

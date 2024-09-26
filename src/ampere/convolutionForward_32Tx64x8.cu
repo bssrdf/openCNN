@@ -149,7 +149,8 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
                        int in_w, int tiles_dim, int tw, int th, unsigned short mask){
   
   // load one input tile
-  int tx = in_w / gridDim.x, ty = in_h / gridDim.y;  
+  // int tx = in_w / gridDim.x, ty = in_h / gridDim.y;  
+  int tx = TW, ty = TH;
   int c_tile = blockIdx.x * tx  + blockIdx.y * in_w * ty; 
   int c_tensor = c_tile + (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * in_w * 2 + 
                 threadIdx.y*(in_h*in_w) - (in_w+1);
@@ -193,7 +194,7 @@ __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile,
       #pragma unroll
       for(int j=0; j<4; j++){
         x = (i<<2) + j;
-        tile[x] = 0;
+        tile[x] = 0.f;
         if(mask&(1<<x))
           tile[x]=pInputs[acumm + j + c_tensor];
         // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
@@ -253,14 +254,31 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   // if(!((blockIdx.y)%tiles_dim))   m&=0xeeee;
 
   if(blockIdx.y==0 && (threadIdx.x / X) == 0)   m &= 0xFFF0;  // pad top row
-  if(blockIdx.y==gridDim.y-1 && threadIdx.x / X == Y-1) m &= (!(in_h%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows
-  if(blockIdx.x==gridDim.x-1 && (threadIdx.x % X) == X-1) m &= (!(in_w%2))?(0x7777):(0x3333); // pad right col or right 2 cols
-  if(blockIdx.x == 0 && (threadIdx.x % X) == 0)   m &=0xeeee;  // pad left col
+  if(tiles_dim % X == 0 && tiles_dim % Y == 0){
+    if(blockIdx.y==gridDim.y-1 && threadIdx.x / X == Y-1) m &= (!(in_h%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows
+    if(blockIdx.x==gridDim.x-1 && (threadIdx.x % X) == X-1) m &= (!(in_w%2))?(0x7777):(0x3333); // pad right col or right 2 cols
+  }else if(tiles_dim % X == 0){
+    int k = in_h % TH; 
+    int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
+    if(threadIdx.x / X == k1-1) m &= (!(k%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows 
+    if(threadIdx.x / X > k1-1) m &= 0x0; //pad all zeros since this tile does not exist 
+  }else if(tiles_dim % Y == 0){
+    int k = in_w % TW;   
+    int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 8*k1 tiles
+    if(threadIdx.x % X == k1-1) m &= (!(k%2))?(0x7777):(0x3333); // pad right col or right 2 cols
+    if(threadIdx.x % X > k1-1) m &= 0x0; //pad all zeros since this tile does not exist 
+  }else{
+    int kh = in_h % TH; 
+    int kw = in_w % TW;   
+    int kh1 =  kh % 2 ? (kh+1)/2 : kh/2; // there could be kh1*kw1 tiles
+    int kw1 =  kw % 2 ? (kw+1)/2 : kw/2; 
+    if(threadIdx.x / X == kh1-1) m &= (!(kh%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows 
+    if(threadIdx.x / X > kh1-1) m &= 0x0; //pad all zeros since this tile does not exist 
+    if(threadIdx.x % X == kw1-1) m &= (!(kw%2))?(0x7777):(0x3333); // pad right col or right 2 cols
+    if(threadIdx.x % X > kw1-1) m &= 0x0; //pad all zeros since this tile does not exist 
+  }  
+  if(blockIdx.x==0 && (threadIdx.x % X) == 0)   m &=0xeeee;  // pad left col
   
-  
-
-
-
   float img_tile[16]; // Prefetch input from GMEM
   float filter_tile[32]; // Prefetch filter from GMEM
 
