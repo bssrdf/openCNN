@@ -51,14 +51,10 @@ extern "C"
 
 #define d(input, i, j) ( input[(i<<2) + (j)] )
 
-__device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float *pOutputs, int in_h, int in_w,
-                                  int tiles_dim, int in_c, int tile_size, 
-                                  int tiles_2d_dim, int tile_2d_s){
+__device__ __forceinline__ void load_and_transform_input_tile(float *Btd, float *pOutputs){
 
   float workspace[3]; 
 
-  // if(threadIdx.y >= BC) return;
-  
   #pragma unroll
   for(int j=0; j<4; j++){
     workspace[0] = Btd[j];
@@ -146,7 +142,7 @@ __device__ __forceinline__ void prefetch_filter_tile(float *pInputs, float *tile
 }
 
 __device__ __forceinline__ void prefetch_input_tile(float *pInputs, float *tile, int in_h, 
-                       int in_w, int tiles_dim, int tw, int th, unsigned short mask){
+                       int in_w, int tw, int th, unsigned short mask){
   
   // load one input tile
   // int tx = in_w / gridDim.x, ty = in_h / gridDim.y;  
@@ -237,10 +233,11 @@ __device__  __forceinline__ void prefetch_input_frag(float4* input_frag, float4 
 }
 
 __global__ void Winograd_kernel(float *A, float *B, float *C,
-                    int tiles_dim, int in_c, int in_h, int in_w, 
+                    int tiles_dim_w, int tiles_dim_h,
+                    int in_c, int in_h, int in_w,
                     int tile_size, int X, int Y,
                     int filt_k, int filt_c,
-                    int tiles_2d_dim, int out_c, 
+                    int out_c,
                     int tile_2d_s, int out_h, int out_w){
 
   extern __shared__ float shared_mem[];
@@ -254,16 +251,16 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   // if(!((blockIdx.y)%tiles_dim))   m&=0xeeee;
 
   if(blockIdx.y==0 && (threadIdx.x / X) == 0)   m &= 0xFFF0;  // pad top row
-  if(tiles_dim % X == 0 && tiles_dim % Y == 0){
+  if(tiles_dim_w % X == 0 && tiles_dim_h % Y == 0){
     if(blockIdx.y==gridDim.y-1 && threadIdx.x / X == Y-1) m &= (!(in_h%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows
     if(blockIdx.x==gridDim.x-1 && (threadIdx.x % X) == X-1) m &= (!(in_w%2))?(0x7777):(0x3333); // pad right col or right 2 cols
-  }else if(tiles_dim % X == 0){
+  }else if(tiles_dim_w % X == 0){
     int k = in_h % TH; 
     int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
     if(blockIdx.x==gridDim.x-1 && (threadIdx.x % X) == X-1) m &= (!(in_w%2))?(0x7777):(0x3333); // pad right col or right 2 cols
     if(blockIdx.y==gridDim.y-1 && threadIdx.x / X == k1-1) m &= (!(k%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows
     if(blockIdx.y==gridDim.y-1 && threadIdx.x / X > k1-1) m &= 0x0; //pad all zeros since this tile does not exist
-  }else if(tiles_dim % Y == 0){
+  }else if(tiles_dim_h % Y == 0){
     int k = in_w % TW;   
     int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 8*k1 tiles
     if(blockIdx.y==gridDim.y-1 && threadIdx.x / X == Y-1) m &= (!(in_h%2))?(0x0FFF):(0x00FF); //pad bottom row or bottom 2 rows
@@ -301,7 +298,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   float4 *swap_filter;
   float4 *swap_input;
 
-  prefetch_input_tile(A, img_tile, in_h, in_w, tiles_dim, X, Y, m);
+  prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
   prefetch_filter_tile(B, filter_tile, filt_k);
 
   // if(blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
@@ -328,9 +325,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     //     printf("]\n");
     //   }
 
-    load_and_transform_input_tile(img_tile, input_smem, in_h, in_w,
-                 tiles_dim, in_c, tile_size,
-                 tiles_2d_dim, tile_2d_s);
+    load_and_transform_input_tile(img_tile, input_smem);
     load_filter_tile(filter_tile, filter_smem, filt_c, filt_k);
 
     __syncthreads();
@@ -389,7 +384,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
     B += filt_k*BC*4*4;
 
     if(iter<(in_c-BC)){
-      prefetch_input_tile(A, img_tile, in_h, in_w, tiles_dim, X, Y, m);
+      prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
       prefetch_filter_tile(B, filter_tile, filt_k);
     }
 
@@ -397,17 +392,18 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
   }
 
   // Transpose, transform and store accumulated result
-  store_output_tile(accumulator, shared_mem, C, out_h, out_w, tiles_dim, X, Y, input_frag_mem, filter_frag_mem, m);
+  store_output_tile(accumulator, shared_mem, C, out_h, out_w, tiles_dim_w, tiles_dim_h, X, Y,
+                  input_frag_mem, filter_frag_mem);
                      
 }
 
 cudaError_t convolutionForward_32Tx64x8(float *k, int in_h, int in_w, float *w, int out_h,
                   int out_w, int out_c, float *C, float *Ww,                 
-                int tiles_dim, int tile_size,
+                int tiles_dim_w, int tiles_dim_h, int tile_size,
                 int in_c, int filt_k, int filt_c, int filt_h, int filt_w, int alpha, int m){
 
   int tile_2d_s = tile_size*tile_size;
-  int tiles_2d_dim = tiles_dim*tiles_dim;
+  // int tiles_2d_dim = tiles_dim*tiles_dim;
   int smem_size = (16*BN*BC + 16*BC*BK)*4;
   int X = 4, Y = 8;
   
@@ -423,8 +419,8 @@ cudaError_t convolutionForward_32Tx64x8(float *k, int in_h, int in_w, float *w, 
   // each thread block will load 32 tiles (4x4) from the single image input
   // we let X*Y = 32 and arbitraraly pick X = 4 and Y = 8
   // Winograd_kernel<<<dim3(1, tiles_2d_dim, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, 
-  Winograd_kernel<<<dim3((tiles_dim+X-1)/X, (tiles_dim+Y-1)/Y, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, 
-  tiles_dim, in_c, in_h, in_w, tile_size, X, Y, filt_k, filt_c, tiles_2d_dim, out_c, tile_2d_s, out_h, out_w);
+  Winograd_kernel<<<dim3((tiles_dim_w+X-1)/X, (tiles_dim_h+Y-1)/Y, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C,
+  tiles_dim_w, tiles_dim_h, in_c, in_h, in_w, tile_size, X, Y, filt_k, filt_c, out_c, tile_2d_s, out_h, out_w);
 
   return cudaGetLastError();
 }

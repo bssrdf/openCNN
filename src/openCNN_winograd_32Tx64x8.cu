@@ -233,7 +233,7 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
 
 cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h,
                                     int out_w, int out_c, float *C, float *Ww,
-                                  int tiles_dim, int tile_size, int elems_dim,
+                                  int tiles_dim_w, int tiles_dim_h, int tile_size, int elems_dim_h,int elems_dim_w,
                                   int in_c, int filt_k, int filt_c, int filt_h, int filt_w,
                                   int alpha, int m){
   cudaError_t out;
@@ -241,7 +241,7 @@ cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h
   if(BN==32 && BK==64 && BC==8){
     out = convolutionForward_32Tx64x8(k, in_h, in_w, w, out_h,
                 out_w, out_c, C, Ww,
-                tiles_dim, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
+                tiles_dim_w, tiles_dim_h, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
   // // } else 
   // if(BN==32 && BK==64 && BC==5){
   //    out = convolutionForward_40x40x8(k, in_h, in_w, w, out_h, out_w, out_n, out_c, C, Ww, n, tiles_dim, in_n, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
@@ -333,15 +333,18 @@ int main(int argc, char *argv[]) {
   const int m         = M;
   const int r         = filt_h;
   const int tile_size = m+r-1; // alpha value
-  int elems_dim;
-  int tiles_dim;
+  int elems_dim_w, elems_dim_h;
+  int tiles_dim_w, tiles_dim_h;
   
   if(m==2){
-    tiles_dim = ceil(ceil((double)(in_w+2)/2)-1);
+    tiles_dim_w = ceil(ceil((double)(in_w+2)/2)-1);
+    tiles_dim_h = ceil(ceil((double)(in_h+2)/2)-1);
     // tiles_dim = ceil(ceil((double)(min(in_w,in_h)+2)/2)-1);
     // tiles_dim = ceil(ceil((double)(in_h+2)/2)-1);
-    elems_dim = tiles_dim*4;
-    fprintf(stderr, "%s: tiles_dim = %d,  elems_dim = %d \n", __func__, tiles_dim, elems_dim);
+    elems_dim_w = tiles_dim_w*4;
+    elems_dim_h = tiles_dim_h*4;
+    fprintf(stderr, "%s: tiles_dim_w = %d, tiles_dim_h = %d \n", __func__, 
+       tiles_dim_w, tiles_dim_h) ;
   } else {
     std::cout << "Configuration not supported yet" << std::endl;
     exit(0);
@@ -501,7 +504,7 @@ int main(int argc, char *argv[]) {
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
                                   out_w, out_c, out_data, workspace,
-                                   tiles_dim, tile_size, elems_dim,
+                                   tiles_dim_w, tiles_dim_h, tile_size, elems_dim_w, elems_dim_h,
                                    in_c, filt_k, filt_c, filt_h, filt_w,
                                    tile_size, m));
 
@@ -512,7 +515,7 @@ int main(int argc, char *argv[]) {
     // fprintf(stderr, "%s: iter = %d \n", __func__, iter);
     OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
                                     out_w, out_c, out_data, workspace,
-                                   tiles_dim, tile_size, elems_dim,
+                                   tiles_dim_w, tiles_dim_h, tile_size, elems_dim_w, elems_dim_h,
                                    in_c, filt_k, filt_c, filt_h, filt_w,
                                    tile_size, m));
   }

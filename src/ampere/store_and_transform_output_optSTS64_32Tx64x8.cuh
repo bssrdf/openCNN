@@ -20,8 +20,8 @@ extern "C"
 {
     
 __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
-int tiles_dim, int round, int c_tensor, int c_glb_offset, int i1, int i2,
-unsigned short mask1, unsigned short mask2, int out_w)
+    int round, int c_tensor, int c_glb_offset, int i1, int i2,
+    unsigned short mask1, unsigned short mask2, int out_w)
 {                     
   // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
   c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset;
@@ -89,22 +89,23 @@ unsigned short mask1, unsigned short mask2, int out_w)
   } 
 }
 
-__device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim, int tw, int th, int out_w, int out_h){
+__device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim_w, int tiles_dim_h, 
+         int tw, int th, int out_w, int out_h){
 
   unsigned short mask = 0x000F;
   // if((blockIdx.y/tiles_dim)==(tiles_dim-1) && out_w%2) mask&=0x0003; // pad bottom row
   // if(!((blockIdx.y+1)%tiles_dim) && out_w%2)           mask&=0X0005; // pad right col
   // if(blockIdx.y==gridDim.y-1 && (idd / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
   // if(blockIdx.x==gridDim.x-1 && (idd % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
-  if(tiles_dim % tw == 0 && tiles_dim % th == 0){
+  if(tiles_dim_w % tw == 0 && tiles_dim_h % th == 0){
     if(blockIdx.y==gridDim.y-1 && (idd / tw) == th-1 && out_h%2)  mask&=0x0003; // pad bottom row
     if(blockIdx.x==gridDim.x-1 && (idd % tw) == tw-1 && out_w%2)  mask&=0X0005; // pad right col
-  }else if(tiles_dim % tw == 0){
+  }else if(tiles_dim_w % tw == 0){
     int k = out_h % TH;
     int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
     if(blockIdx.y==gridDim.y-1 && (idd / tw) == k1-1 && k%2)  mask&=0x0003; // pad bottom row
     if(blockIdx.y==gridDim.y-1 && (idd / tw) > k1-1) mask &= 0x0; //pad all zeros since this tile does not exist
-  }else if(tiles_dim % th == 0){
+  }else if(tiles_dim_h % th == 0){
     int k = out_w % TW;
     int k1 =  k % 2 ? (k+1)/2 : k/2; // there could be 4*k1 tiles
     if(blockIdx.x==gridDim.x-1 && (idd % tw) == k1-1 && k%2)  mask&=0X0005; // pad right col
@@ -123,7 +124,8 @@ __device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim, int t
 }
 
 __device__ __forceinline__ void store_output_tile(float4 acumm_smem[][16], float *shared_mem, float *C, 
-int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, float4* filter_frag_mem,  unsigned short mask){
+int out_h, int out_w, int tiles_dim_w, int tiles_dim_h,  int tw, int th, 
+float4 *input_frag_mem, float4* filter_frag_mem){
   
   float2 *output_smem = (float2 *) shared_mem;
   float2 *accumulator = (float2 *) acumm_smem;
@@ -138,8 +140,8 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
   int id2 = (idd2 % tw) * 2 + (idd2 / tw) * out_w * 2;
 
   // unsigned short mask1 = 0x000F;
-  unsigned short mask1 = get_mask(idd1, tiles_dim, tw, th, out_w, out_h);
-  unsigned short mask2 = get_mask(idd2, tiles_dim, tw, th, out_w, out_h);
+  unsigned short mask1 = get_mask(idd1, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
+  unsigned short mask2 = get_mask(idd2, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
   
   // output transpose step
   int t=0;
@@ -303,7 +305,7 @@ int out_h, int out_w, int tiles_dim, int tw, int th, float4 *input_frag_mem, flo
 
     // transform output tiles
     // transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
-    transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask1, mask2, out_w);
+    transform_output_tile(C, C_tile, At, round, c_tensor, c_glb_offset, id1, id2, mask1, mask2, out_w);
     __syncthreads();
   }
 }
