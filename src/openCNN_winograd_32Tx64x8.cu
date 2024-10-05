@@ -205,7 +205,7 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-              printf("(%.0f, %.0f, %d, %d)", 
+              printf("(%f, %f, %d, %d)", 
               A[k*len*len*n + i*len*n + j*n + m],
               B[m*len*len*channel + k*len*len + i*len + j], j, i);
             //   printf("(%.0f, %.0f, %d)", 
@@ -261,12 +261,13 @@ cudaError_t init_data(float *in_data, float *in_data_open, float *filt_data, flo
   dim3 dimGrid((n + dimBlock.x -1)/dimBlock.x);
 
   // dev_iota<<<dimGrid, dimBlock>>>(in_data, n);
-  dev_const1<<<dimGrid, dimBlock>>>(in_data, n);
+  // dev_const1<<<dimGrid, dimBlock>>>(in_data, n);
+  dev_const<<<dimGrid, dimBlock>>>(in_data, 1.5f, n);
   data_cpy<<<dim3(in_n, in_w, in_h), in_c>>>(in_data_open, in_data, in_w, in_h, in_c, in_n);
 
   n = filt_k*filt_c*filt_h*filt_w;
   dim3 dimGrid_f = dim3((n + dimBlock.x -1)/dimBlock.x);
-  dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 2.0f, n);
+  dev_const<<<dimGrid_f, dimBlock>>>(filt_data, 2.5f, n);
   // dev_iota<<<dimGrid_f, dimBlock>>>(filt_data, n);
   data_cpy<<<dim3(filt_k, filt_w, filt_h), dim3(filt_c)>>>(filt_data_open, filt_data, filt_w, filt_h, filt_c, filt_k);
 
@@ -441,6 +442,10 @@ int main(int argc, char *argv[]) {
         conv_desc,
         pad_h, pad_w, str_h, str_w, dil_h, dil_w,
         CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));  //CUDNN_CONVOLUTION
+
+  CUDNN_CALL(cudnnSetConvolutionMathType(
+    conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
+    
   
   
   // =================== Query output layout =================== //
@@ -464,6 +469,8 @@ int main(int argc, char *argv[]) {
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
   cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_GEMM;
 
   // =================== Query workspace and allocate =================== //
   size_t ws_size;

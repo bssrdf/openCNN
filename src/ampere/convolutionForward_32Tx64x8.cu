@@ -240,7 +240,7 @@ __global__ void Winograd_kernel(float *A, float *B, float *C,
                     int out_c,
                     int tile_2d_s, int out_h, int out_w){
 
-  extern __shared__ float shared_mem[];
+  __align__(128) extern __shared__ float shared_mem[];
   float *input_smem  = (float*)shared_mem;
   float *filter_smem = (float*)&shared_mem[16*BC*BN];
 
