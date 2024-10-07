@@ -126,7 +126,7 @@ __device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim_w, int
 __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> *frag, 
        unsigned char* shared_mem, float *C, int out_h, int out_w, int tiles_dim_w, int tiles_dim_h,  int tw, int th){
   
-  float2 *output_smem = (float2 *) shared_mem;
+  float *output_smem = (float *) shared_mem;
   // float2 *accumulator = (float2 *) acumm_smem;
   // float2 *C_out = (float2*)C;
 
@@ -203,13 +203,13 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // each warp stores 4 of its accum frag; for 4 rounds all 16 frags are done
 
 
-    float2 * ptr =  &output_smem[laneid*16+warpid];
+    float  *ptr =  &output_smem[warpid*BN*wmmaM];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 8, nvcuda::wmma::mem_row_major); // 8 since we use float2
-    
+    ptr =  &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 8, nvcuda::wmma::mem_row_major);
-
+    ptr =  &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 8, nvcuda::wmma::mem_row_major);
-
+    ptr =  &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 8, nvcuda::wmma::mem_row_major);
     
 
