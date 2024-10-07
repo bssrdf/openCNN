@@ -20,6 +20,7 @@
 #include <math.h>
 #include <float.h>
 #include <cuda.h>
+#include <cuda_fp16.h>
 #include <omp.h>
 
 #include <curand.h>
@@ -126,24 +127,24 @@ void tflops(int in_n, int in_w, int in_h, int in_c, int filt_w, int filt_h, int 
   printf("%.3f,%.2f", ms, L/(2.25 * ms * 1e9) );
 }
 
-__global__ void dev_const(float *px, float k, int n) {
+__global__ void dev_const(half *px, float k, int n) {
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
  
   curandState state;
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = k;
+    px[tid] = __float2half(k);
 }
 
-__global__ void dev_const1(float *px, int n) {
+__global__ void dev_const1(half *px, int n) {
   int tid = threadIdx.x + blockIdx.x * blockDim.x;
  
   curandState state;
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = tid % (24*24) + 1.f;
+    px[tid] = __float2half(tid % (24*24) + 1.f);
     // px[tid] = k;
 }
 
@@ -157,7 +158,7 @@ __global__ void dev_iota(float *px, int n) {
     px[tid] = curand_uniform(&state);
 }
 
-__global__ void data_cpy(float *px, float *py, 
+__global__ void data_cpy(half *px, half *py, 
           int in_w, int in_h, int in_c, int in_n) {
   int tid = blockIdx.y + blockIdx.z*in_w + threadIdx.x*in_h*in_w + blockIdx.x*in_h*in_w*in_c;
   int id  = blockIdx.x + blockIdx.y*in_n + blockIdx.z*in_n*in_w + threadIdx.x*in_n*in_h*in_w;
@@ -231,8 +232,8 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
 }
 
 
-cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h,
-                                    int out_w, int out_c, float *C, float *Ww,
+cudaError_t convolutionForward(half *k, int in_h, int in_w, half *w, int out_h,
+                                    int out_w, int out_c, float *C, half *Ww,
                                   int tiles_dim_w, int tiles_dim_h, int tile_size, int elems_dim_h,int elems_dim_w,
                                   int in_c, int filt_k, int filt_c, int filt_h, int filt_w,
                                   int alpha, int m){
@@ -252,7 +253,7 @@ cudaError_t convolutionForward(float *k, int in_h, int in_w, float *w, int out_h
   return out;
 }
 
-cudaError_t init_data(float *in_data, float *in_data_open, float *filt_data, float *filt_data_open, int in_w, int in_h, int in_c, int in_n, int filt_w, int filt_h, int filt_c, int filt_k, int tile_size){
+cudaError_t init_data(half *in_data, half *in_data_open, half *filt_data, half *filt_data_open, int in_w, int in_h, int in_c, int in_n, int filt_w, int filt_h, int filt_c, int filt_k, int tile_size){
 
   int n = in_n*in_c*in_h*in_w;
   int blk_size = 256;
@@ -361,18 +362,18 @@ int main(int argc, char *argv[]) {
 	float mi, mx;
 	int mi_i, mx_i;
 
-  float *in_data_open;
-  float *filt_data_open, *workspace;
+  half *in_data_open;
+  half *filt_data_open, *workspace;
 
   // ImageBatch openCNN
   OPENCNN_CALL(cudaMalloc(
-        &in_data_open, in_n * in_c * in_h * in_w * sizeof(float))); 
+        &in_data_open, in_n * in_c * in_h * in_w * sizeof(half))); 
   // Filter openCNN
   OPENCNN_CALL(cudaMalloc(
-      &filt_data_open, filt_k * filt_c * filt_h * filt_w * sizeof(float)));  
+      &filt_data_open, filt_k * filt_c * filt_h * filt_w * sizeof(half)));  
   // Filter transformation
   OPENCNN_CALL(cudaMalloc(
-      &workspace, filt_k * filt_c * tile_size * tile_size * sizeof(float)));  
+      &workspace, filt_k * filt_c * tile_size * tile_size * sizeof(half)));  
 
   // Output openCNN    
   float *out_data;
@@ -407,14 +408,14 @@ int main(int argc, char *argv[]) {
 
 
 
-  float *in_data, *filt_data; 
+  half *in_data, *filt_data; 
 
   // ImageBatch cuDNN
   CUDA_CALL(cudaMalloc(
-        &in_data, in_n * in_c * in_h * in_w * sizeof(float)));
+        &in_data, in_n * in_c * in_h * in_w * sizeof(half)));
   // Filter cuDNN
   CUDA_CALL(cudaMalloc(
-        &filt_data, filt_k * filt_c * filt_h * filt_w * sizeof(float)));
+        &filt_data, filt_k * filt_c * filt_h * filt_w * sizeof(half)));
 
 #if 1    
   // =================== Set descriptors =================== //
@@ -425,14 +426,14 @@ int main(int argc, char *argv[]) {
   cudnnTensorDescriptor_t in_desc;
   CUDNN_CALL(cudnnCreateTensorDescriptor(&in_desc));
   CUDNN_CALL(cudnnSetTensor4dDescriptor(
-        in_desc, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/, CUDNN_DATA_FLOAT,
+        in_desc, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/, CUDNN_DATA_HALF,
         in_n, in_c, in_h, in_w));
 
   // Filter Descriptors      
   cudnnFilterDescriptor_t filt_desc;
   CUDNN_CALL(cudnnCreateFilterDescriptor(&filt_desc));
   CUDNN_CALL(cudnnSetFilter4dDescriptor(
-        filt_desc, CUDNN_DATA_FLOAT, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/,
+        filt_desc, CUDNN_DATA_HALF, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/,
         filt_k, filt_c, filt_h, filt_w));
   
   // Convolution Descriptors

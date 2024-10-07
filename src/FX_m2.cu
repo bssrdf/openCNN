@@ -16,39 +16,42 @@
 
 #ifndef _FX_
 #define _FX_
+
+#include<cuda_fp16.h>
+
 extern "C"
 {
 
 // Set of functions per row in Gw product
-__device__ float f_row1(float *Gw, int j){
+__device__ half f_row1(half *Gw, int j){
     return Gw[j];
   }
-  __device__ float f_row2(float *Gw, int j){
-    return 0.5*(Gw[j] + Gw[6+j] + Gw[3+j]);
+  __device__ half f_row2(half *Gw, int j){
+    return __float2half(0.5f)*(Gw[j] + Gw[6+j] + Gw[3+j]);
   }
-  __device__ float f_row3(float *Gw, int j){
-    return 0.5*(Gw[j] + Gw[6+j] - Gw[3+j]);
+  __device__ half f_row3(half *Gw, int j){
+    return __float2half(0.5f)*(Gw[j] + Gw[6+j] - Gw[3+j]);
   }
-  __device__ float f_row4(float *Gw, int j){
+  __device__ half f_row4(half *Gw, int j){
     return Gw[6+j];
   }
   // Set of functions per column in GwGt product
-  __device__ float f_col1(float *Gw, int j){
+  __device__ half f_col1(half *Gw, int j){
     return Gw[j];
   }
-  __device__ float f_col2(float *Gw, int j){
-    return 0.5*(Gw[j] + Gw[j+2] + Gw[j+1]);
+  __device__ half f_col2(half *Gw, int j){
+    return __float2half(0.5f)*(Gw[j] + Gw[j+2] + Gw[j+1]);
   }
-  __device__ float f_col3(float *Gw, int j){
-    return 0.5*(Gw[j] + Gw[j+2] - Gw[j+1]);
+  __device__ half f_col3(half *Gw, int j){
+    return __float2half(0.5f)*(Gw[j] + Gw[j+2] - Gw[j+1]);
   }
-  __device__ float f_col4(float *Gw, int j){
+  __device__ half f_col4(half *Gw, int j){
     return Gw[j+2];
   }
   
-  typedef float(*pointFunction_t)(float *, int);
+  typedef half(*pointFunction_t)(half *, int);
   
-  __global__ void FX(float *pInputs, float *pOutputs, int filt_k, 
+  __global__ void FX(half *pInputs, half *pOutputs, int filt_k, 
                       int filt_c, int filt_h, int filt_w, int alpha){
     int Inx = threadIdx.x, Iny = threadIdx.y;
     int TileX = blockIdx.x, TileY = blockIdx.y;
@@ -58,8 +61,8 @@ __device__ float f_row1(float *Gw, int j){
     int c_glb_offset_s = filt_k*4*4;
     int c_kernel_s = TileY*BC*c_glb_offset_s + TileX*BK + Iny*c_glb_offset_s + Inx;
   
-    float Gw[21]; //9+12. In registers
-    float *Gw_buffer = Gw+9;
+    half Gw[21]; //9+12. In registers
+    half *Gw_buffer = Gw+9;
   
     pointFunction_t func1[4] = {f_row1, f_row2, f_row3, f_row4};
     pointFunction_t func2[4] = {f_col1, f_col2, f_col3, f_col4};
