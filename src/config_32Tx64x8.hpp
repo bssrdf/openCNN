@@ -25,6 +25,10 @@
 #define BK_GEMM 128
 ///////////////////// For Non-Fused version
 
+const int wmmaM = 16;
+const int wmmaN = 16;
+const int wmmaK = 16;
+
 #define TW 8
 #define TH 16
 
