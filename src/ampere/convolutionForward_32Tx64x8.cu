@@ -320,7 +320,8 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
   // wee need to do 16-batched 32x16x64 MM, each wmma will do 16x16x16 so 
   // we need to do 16 2x4 wmmas's 
-  // we allocate 2 FragA and 4 FragB and 8 Accum, then in a loop of 2 iterations 
+  // we allocate 2 FragA and 4 FragB and 16 Accum, then in a loop of 2 iterations 
+  // reuse 2 FragA and 4 FragB
   //    
   for(int iter=0; iter<in_c; iter+=BC){ // Current iteration
 
@@ -380,8 +381,8 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   }
 
   // Transpose, transform and store accumulated result
-  store_output_tile(accumulator, shared_mem, C, out_h, out_w, tiles_dim_w, tiles_dim_h, X, Y,
-                  input_frag_mem, filter_frag_mem);
+  store_output_tile(Accum, shared_mem, C, out_h, out_w, tiles_dim_w, tiles_dim_h, X, Y);
+                  
                      
 }
 
