@@ -20,8 +20,7 @@ extern "C"
 {
     
 __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *C_tile, float2 *At, 
-    int round, int c_tensor, int c_glb_offset, int i1, int i2,
-    unsigned short mask1, unsigned short mask2, int out_w)
+    int round, int c_tensor, int c_glb_offset, int id, unsigned short mask, int out_w)
 {                     
   // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
   c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset;
@@ -67,11 +66,11 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
     //   printf("round, %d, %d, %d, %d, %d\n", round, i, x1, c_tensor, x1+c_tensor);
     // }
 
-    if(mask1&(1<<(i*2))){
-      pOutputs[x1 + c_tensor + i1] = At[x].x + At[x+1].x + At[x+2].x;
+    if(mask&(1<<(i*2))){
+      pOutputs[x1 + c_tensor + id] = At[x].x + At[x+1].x + At[x+2].x;
     }
-    if(mask2&(1<<(i*2))){
-      pOutputs[x1 + c_tensor + i2] = At[x].y + At[x+1].y + At[x+2].y;
+    if(mask&(1<<(i*2))){
+      pOutputs[x1 + c_tensor + 8*c_glb_offset + id] = At[x].y + At[x+1].y + At[x+2].y;
 
       // if(pOutputs[x1 + c_tensor].x < 0.f)
       //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
@@ -80,11 +79,11 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
       //   printf(" B, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //        threadIdx.x, threadIdx.y, i, x, pOutputs[x1 + c_tensor].y, At[x].y, At[x+1].y, At[x+2].y);
     }
-    if(mask1&(1<<(i*2+1))){
-      pOutputs[x1 + c_tensor + i1 + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
+    if(mask&(1<<(i*2+1))){
+      pOutputs[x1 + c_tensor + id + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
     }
-    if(mask2&(1<<(i*2+1))){
-      pOutputs[x1 + c_tensor + i2 + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
+    if(mask&(1<<(i*2+1))){
+      pOutputs[x1 + c_tensor + id + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
   } 
 }
@@ -133,14 +132,17 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   // float2 *C_tile = (float2*) input_frag_mem;
   // float2 *At = (float2*) filter_frag_mem;
 
-  int idd1 = tileid[0][threadIdx.x];
+  float2 C_tile[16]; 
+  float2 At[16]; 
+
+  int idd1 = threadIdx.x;
   int id1 = (idd1 % tw) * 2 + (idd1 / tw) * out_w * 2;
-  int idd2 = tileid[1][threadIdx.x];
-  int id2 = (idd2 % tw) * 2 + (idd2 / tw) * out_w * 2;
+  // int idd2 = threadIdx.x;
+  // int id2 = (idd2 % tw) * 2 + (idd2 / tw) * out_w * 2;
 
   // unsigned short mask1 = 0x000F;
   unsigned short mask1 = get_mask(idd1, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
-  unsigned short mask2 = get_mask(idd2, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
+  // unsigned short mask2 = get_mask(idd2, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
   
   int warpid = threadIdx.y;
   int laneid = threadIdx.x;
@@ -157,7 +159,7 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   int idx2 = idx + BN_p*8; //(BN_p*2 *8)/2
 
   // For transformating
-  int offset = BN_p *2; //*2/2
+  int offset = BN*16; //*2/2
   int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
@@ -173,7 +175,7 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
 
   int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * tx  + blockIdx.y * out_w * ty +
                 //  (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
-                 ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
+                 warpid*c_glb_offset;
 
   // c_tensor/=2; 
 
@@ -203,18 +205,15 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // each warp stores 4 of its accum frag; for 4 rounds all 16 frags are done
 
 
-    float  *ptr =  &output_smem[warpid*BN*wmmaM];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 8, nvcuda::wmma::mem_row_major); // 8 since we use float2
-    ptr =  &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 8, nvcuda::wmma::mem_row_major);
-    ptr =  &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 8, nvcuda::wmma::mem_row_major);
-    ptr =  &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 8, nvcuda::wmma::mem_row_major);
-    
-
-    t+=8;
-
+    float *ptr =  &output_smem[warpid*BN*wmmaM];
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); 
+    ptr = &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major);
+    ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_row_major);
+    ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
+ 
     // __syncthreads();
 
   // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
@@ -258,8 +257,8 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
     //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
-      C_tile[i].x = shared_mem[i*offset + init];
-      C_tile[i].y = shared_mem[i*offset + init + 32];
+      C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
+      C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty){
       //   printf("%d,", i*offset + init);
       // }
@@ -276,7 +275,7 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
 
     // transform output tiles
     // transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
-    transform_output_tile(C, C_tile, At, round, c_tensor, c_glb_offset, id1, id2, mask1, mask2, out_w);
+    transform_output_tile(C, C_tile, At, round, c_tensor, c_glb_offset, id1, mask1, out_w);
     __syncthreads();
   }
 }
