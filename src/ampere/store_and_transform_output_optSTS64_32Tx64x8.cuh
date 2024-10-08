@@ -23,7 +23,9 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
     int round, int c_tensor, int c_glb_offset, int id, unsigned short mask, int out_w)
 {                     
   // c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset/2;  
-  c_tensor += (((round)/2)*32 + ((round)%2)*2)*c_glb_offset;
+  // c_tensor +=  round * 16 * c_glb_offset; //each round moves 16 (= 64/4) K
+  // c_tensor +=  16 * c_glb_offset; //each round moves 16 (= 64/4) K
+  // int c_tensor1 = c_tensor + 16 * c_glb_offset;
   int x, x1;
 
   #pragma unroll
@@ -70,7 +72,7 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
       pOutputs[x1 + c_tensor + id] = At[x].x + At[x+1].x + At[x+2].x;
     }
     if(mask&(1<<(i*2))){
-      pOutputs[x1 + c_tensor + 8*c_glb_offset + id] = At[x].y + At[x+1].y + At[x+2].y;
+      pOutputs[x1 + c_tensor + id + 8*c_glb_offset] = At[x].y + At[x+1].y + At[x+2].y;
 
       // if(pOutputs[x1 + c_tensor].x < 0.f)
       //   printf(" A, (%d, %d,  %d), (%d, %d), %d, %d, %f, %f, %f, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
@@ -83,7 +85,7 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
       pOutputs[x1 + c_tensor + id + 1] = At[x+1].x - At[x+2].x - At[x+3].x;
     }
     if(mask&(1<<(i*2+1))){
-      pOutputs[x1 + c_tensor + id + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
+      pOutputs[x1 + c_tensor + 8*c_glb_offset + id + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
   } 
 }
@@ -147,20 +149,20 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   int warpid = threadIdx.y;
   int laneid = threadIdx.x;
   // output transpose step
-  int t=0;
-  int acumm1, acumm2;
+  // int t=0;
+  // int acumm1, acumm2;
   // For transposing
   //acumm1 = access_s_out[Inx]; //* 4
-  acumm1 = ((threadIdx.x%8)/2)*34 + threadIdx.x%2 + (threadIdx.x/16)*2 + ((threadIdx.x/8)%2)*8;
-  acumm2 = acumm1+4;
+  // acumm1 = ((threadIdx.x%8)/2)*34 + threadIdx.x%2 + (threadIdx.x/16)*2 + ((threadIdx.x/8)%2)*8;
+  // acumm2 = acumm1+4;
                        
-  int acumm4 = BN_p*16 ; //*4
-  int idx  = threadIdx.y * BN_p;
-  int idx2 = idx + BN_p*8; //(BN_p*2 *8)/2
+  // int acumm4 = BN_p*16 ; //*4
+  // int idx  = threadIdx.y * BN_p;
+  // int idx2 = idx + BN_p*8; //(BN_p*2 *8)/2
 
   // For transformating
   int offset = BN*16; //*2/2
-  int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
+  // int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
   // int c_tensor = blockIdx.z*c_glb_offset*BK + (blockIdx.y%tiles_dim)*2 + (blockIdx.y/tiles_dim)*out_w*2 + 
@@ -168,14 +170,19 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   //               ((threadIdx.x/16)*16 + (threadIdx.y%4)*4 + threadIdx.y/4)*c_glb_offset;
 
   // int tx = out_w / gridDim.x, ty = out_h / gridDim.y;  
-  int tx = TW, ty = TH;  
+  // int tx = TW, ty = TH;  
   // int c_tile = blockIdx.x * tx  + blockIdx.y * in_w * ty; 
   // int c_tensor = c_tile + (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * in_w * 2 + 
   //               threadIdx.y*(in_h*in_w) - (in_w+1);
 
-  int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * tx  + blockIdx.y * out_w * ty +
+  int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * TW  + blockIdx.y * out_w * TH +
                 //  (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
                  warpid*c_glb_offset;
+
+  // int c_tensor = blockIdx.z*c_glb_offset*BK + blockIdx.x * tx  + blockIdx.y * out_w * ty;
+                //  (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * out_w * 2 + 
+                
+
 
   // c_tensor/=2; 
 
@@ -197,7 +204,7 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   // }    
 
 
-  int target = 16;  
+  // int target = 16;  
 
   #pragma unroll                                  
   for(int round=0; round<4; round++){
@@ -206,15 +213,19 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
 
 
     float *ptr =  &output_smem[warpid*BN*wmmaM];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); 
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
+      // nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_col_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
     ptr = &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major);
+    nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_col_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
     ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_row_major);
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_col_major);
     ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
     nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_col_major);    
  
-    // __syncthreads();
+    __syncthreads();
 
   // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
   //   printf("round, %d, [", round);
@@ -253,18 +264,18 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // int id2 = tileid[1][l];
 
 
-    // int tx = 0, ty=1; 
-    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-    //   printf("round, %d, [", round);
+    int tx = 12, ty=0; 
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+      printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty){
-      //   printf("%d,", i*offset + init);
-      // }
+      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
+        printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
+      }
     }
-    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-    //   printf("]\n");   
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+      printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
@@ -277,6 +288,9 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // transform_output_tile(C, C_tile, At, tiles_dim, round, c_tensor, c_glb_offset, id1, id2, mask, out_w);
     transform_output_tile(C, C_tile, At, round, c_tensor, c_glb_offset, id1, mask1, out_w);
     __syncthreads();
+
+    c_tensor +=  16 * c_glb_offset;
+
   }
 }
 

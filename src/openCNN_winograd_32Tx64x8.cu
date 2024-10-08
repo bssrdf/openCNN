@@ -103,7 +103,7 @@
 #define CUDNN_CALL(f) { \
   cudnnStatus_t err = (f); \
   if (err != CUDNN_STATUS_SUCCESS) { \
-    printf("    Error occurred: \n"); \
+    printf("   Cudnn Error occurred at %s (%d): \n", __FILE__, __LINE__); \
     std::exit(1); \
   } \
 }
@@ -188,10 +188,10 @@ void print(const float *data, int n, int c, int h, int w) {
   std::cout << std::endl;
 }
   
-void output_checker(float* A, float* B, int n, int len, int channel, int shift) {
+void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = -1;
+  int kk = 0;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -200,19 +200,21 @@ void output_checker(float* A, float* B, int n, int len, int channel, int shift) 
         for (m = 0; m < n; m++) {
             float diff = fabs(
                 A[k*len*len*n + i*len*n + j*n + m] - 
-                B[m*len*len*channel + k*len*len + i*len + j]);
+                __half2float(B[m*len*len*channel + k*len*len + i*len + j]));
             if(k == kk){
             // if(i==0 && j==0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-              printf("(%f, %f, %d, %d)", 
+              printf("(%.0f, %.0f, %d, %d)", 
               A[k*len*len*n + i*len*n + j*n + m],
-              B[m*len*len*channel + k*len*len + i*len + j], j, i);
-            //   printf("(%.0f, %.0f, %d)", 
-            //   A[k*len*len*n + i*len*n + j*n + m],
-            //   B[m*len*len*channel + k*len*len + i*len + j], k);
+              __half2float(B[m*len*len*channel + k*len*len + i*len + j]), j, i);
+              // printf("(%f, %f, %d)", 
+              // A[k*len*len*n + i*len*n + j*n + m],
+              // __half2float(B[m*len*len*channel + k*len*len + i*len + j]), k);
             }    
+            // if(A[k*len*len*n + i*len*n + j*n + m] <  1.0f)
+            //    printf("error at: %f, %d, %d, %d,\n", A[k*len*len*n + i*len*n + j*n + m], k, i, j);
             if (diff > 1){ //1e-4
               error_cnt++;
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
@@ -239,7 +241,7 @@ cudaError_t convolutionForward(half *k, int in_h, int in_w, half *w, int out_h,
                                   int alpha, int m){
   cudaError_t out;
 
-  if(BN==32 && BK==64 && BC==8){
+  if(BN==32 && BK==64 && BC==16){
     out = convolutionForward_32Tx64x8(k, in_h, in_w, w, out_h,
                 out_w, out_c, C, Ww,
                 tiles_dim_w, tiles_dim_h, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
@@ -286,6 +288,23 @@ void find_minmax(const float *val, const int l, float *mi, float *mx, int *mi_i,
       }
       if((*mx) < val[i]){
            (*mx) = val[i];
+           (*mx_i) = i;
+      }
+  }
+
+}
+
+void find_minmax_half(const half *val, const int l, float *mi, float *mx, int *mi_i, int *mx_i){
+  *mi = FLT_MAX;
+  *mx = -FLT_MAX;
+  for(int i= 0; i < l; i++){
+    float v = __half2float(val[i]);
+      if((*mi) > v){
+           (*mi) = v;
+           (*mi_i) = i;
+      }
+      if((*mx) < v){
+           (*mx) = v;
            (*mx_i) = i;
       }
   }
@@ -458,12 +477,12 @@ int main(int argc, char *argv[]) {
   cudnnTensorDescriptor_t out_desc;
   CUDNN_CALL(cudnnCreateTensorDescriptor(&out_desc));
   CUDNN_CALL(cudnnSetTensor4dDescriptor(
-        out_desc, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/, CUDNN_DATA_FLOAT,
+        out_desc, CUDNN_TENSOR_NCHW/*CUDNN_TENSOR_NHWC*/, CUDNN_DATA_HALF,
         out_n, out_c, out_h, out_w));   
 
   float *out_data_cudnn;
   CUDA_CALL(cudaMalloc(
-        &out_data_cudnn, out_n * out_c * out_h * out_w * sizeof(float)));   
+        &out_data_cudnn, out_n * out_c * out_h * out_w * sizeof(half)));   
 
   // =================== Query convolution forward algorithm =================== //
   // cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
@@ -507,7 +526,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 20;
+  int iterations = 0;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
@@ -558,15 +577,15 @@ int main(int argc, char *argv[]) {
   std::cout << std::endl;
   // ============================= Compare results =============================  
   std::cout << "********************************************" << std::endl;    
-  float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)),
-      *tmp_cudnn   = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float)); 
+  float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float));
+  half *tmp_cudnn   = (half*) malloc (out_n*out_h*out_w*out_c*sizeof(half)); 
   cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
-  cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
+  cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<1, cudaMemcpyDeviceToHost);
 
 
   find_minmax(tmp_openCNN, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
 	printf("openCNN: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
-  find_minmax(tmp_cudnn, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
+  find_minmax_half(tmp_cudnn, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);
 	printf("cudnn: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
 	
   
