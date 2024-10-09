@@ -49,25 +49,33 @@ extern "C"
 {
 
 
-#define d(input, i, j, off) ( input[(i<<2) + (j) + (off)] )
+#define d(input, i, j) ( input[(i<<2) + (j)] )
 
 __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
 
   half workspace[3]; 
   int c_offset = BC*BN;
-  int c_tensor = threadIdx.x*BC + threadIdx.y*2;
-  int offset = 0, offset1 = 0;
-  for(int k=0; k<2; k++){
+  int c_tensor = threadIdx.x*BC + threadIdx.y;
+  // int offset = 0;// offset1 = 0;
+  // for(int k=0; k<2; k++){
     #pragma unroll
     for(int j=0; j<4; j++){
-      workspace[0] = Btd[j+offset];
-      workspace[1] = Btd[j+offset+4];
-      workspace[2] = Btd[j+offset+8];
+      // workspace[0] = Btd[j+offset];
+      // workspace[1] = Btd[j+offset+4];
+      // workspace[2] = Btd[j+offset+8];
 
-      Btd[j+offset]    = workspace[0] - workspace[2];
-      Btd[j+4+offset]  = workspace[1] + workspace[2];
-      Btd[j+8+offset]  = workspace[2] - workspace[1];
-      Btd[j+12+offset] = workspace[1] - Btd[j+12+offset];
+      // Btd[j+offset]    = workspace[0] - workspace[2];
+      // Btd[j+4+offset]  = workspace[1] + workspace[2];
+      // Btd[j+8+offset]  = workspace[2] - workspace[1];
+      // Btd[j+12+offset] = workspace[1] - Btd[j+12+offset];
+      workspace[0] = Btd[j];
+      workspace[1] = Btd[j+4];
+      workspace[2] = Btd[j+8];
+
+      Btd[j]    = workspace[0] - workspace[2];
+      Btd[j+4]  = workspace[1] + workspace[2];
+      Btd[j+8]  = workspace[2] - workspace[1];
+      Btd[j+12] = workspace[1] - Btd[j+12];
     }  
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 1 && threadIdx.y == 0){
     //   printf("[");
@@ -79,10 +87,10 @@ __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *p
     
     #pragma unroll
     for(int i=0; i<4; i++){ // prefetch 1 input tile/thread
-      pOutputs[c_tensor+i*c_offset*4 + offset1] = d(Btd, i, 0, offset) - d(Btd, i, 2, offset);  
-      pOutputs[c_tensor+i*c_offset*4+c_offset + offset1] = d(Btd, i, 1, offset) + d(Btd, i, 2, offset);
-      pOutputs[c_tensor+i*c_offset*4+2*c_offset + offset1] = d(Btd, i, 2, offset) - d(Btd, i, 1, offset);
-      pOutputs[c_tensor+i*c_offset*4+3*c_offset + offset1] = d(Btd, i, 1, offset) - d(Btd, i, 3, offset);
+      pOutputs[c_tensor+i*c_offset*4] = d(Btd, i, 0) - d(Btd, i, 2);  
+      pOutputs[c_tensor+i*c_offset*4+c_offset ] = d(Btd, i, 1) + d(Btd, i, 2);
+      pOutputs[c_tensor+i*c_offset*4+2*c_offset] = d(Btd, i, 2) - d(Btd, i, 1);
+      pOutputs[c_tensor+i*c_offset*4+3*c_offset] = d(Btd, i, 1) - d(Btd, i, 3);
       // if(pOutputs[c_tensor+i*c_offset*4] < 0.f)
       //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4]);
@@ -96,16 +104,16 @@ __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *p
       //     printf(" D, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+3*c_offset]);
     }     
-    offset += 16;
-    offset1 += 1;
-  }
+    // offset += 16;
+    // offset1 += 1;
+  // }
 
 }
 
 __device__ __forceinline__ void load_filter_tile(const half *tiles, half *pOutputs, 
                                 int filt_c, int filt_k){
  
-  int c_tensor_s = threadIdx.x*BC + threadIdx.y*2;
+  int c_tensor_s = threadIdx.x*BC + threadIdx.y;
   int c_offset_s = BK*BC;
   
   // each thread in row 0 puts its first element of 1st filter tile(loaded by the thread) in smem
@@ -126,29 +134,18 @@ __device__ __forceinline__ void load_filter_tile(const half *tiles, half *pOutpu
     // 2nd tile right behind the 1st?
     c_tensor_s += BN*BC; // BN has nothing to do with input tiles
   }
-
-  c_tensor_s = threadIdx.x*BC + threadIdx.y*2;
-  for(int k=0; k<2; k++){ // prefetch 2 filter tiles of 1 channel/thread
-    for(int i=0; i<4; i++){
-      #pragma unroll
-      for(int j=0; j<4; j++){  
-        pOutputs[c_tensor_s + i*c_offset_s*4 + j*c_offset_s + 1] = tiles[32 + k*16 + i*4 + j]; //32 = 2*BC
-      }
-    }
-    // 2nd tile right behind the 1st?
-    c_tensor_s += BN*BC; // BN has nothing to do with input tiles
-  }
+  
   
 }
 
 __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *tiles, int filt_k){
 
   int c_offset = (filt_k<<4);
-  int c_tensor = blockIdx.z*BK + threadIdx.y*2*c_offset + threadIdx.x; // Iny*filt_k*4*4
+  int c_tensor = blockIdx.z*BK + threadIdx.y*c_offset + threadIdx.x; // Iny*filt_k*4*4
 
-  // each threadIdx.y corresponds to 2 channels; there are 8 different threadIdx.y so 16 channels 
+  // each threadIdx.y corresponds to 1 channel; there are 16 different threadIdx.y so 16 channels 
   
-  //each thread (32 threads in x direction) loads 4 kernel tiles (2 for each channel and 32 in K direction apart)
+  //each thread (32 threads in x direction) loads 2 kernel tiles (2 for each channel and 32 in K direction apart)
   
   int acumm, x, x1;
   #pragma unroll  
@@ -159,9 +156,7 @@ __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *
           x = (i<<2) + j;
           x1 = acumm + j*filt_k + c_tensor;
           tiles[x] = pInputs[x1];
-          tiles[16 + x] = pInputs[x1 + BN];
-          tiles[32 + x] = pInputs[x1 + c_offset];
-          tiles[48 + x] = pInputs[x1 + BN + c_offset];
+          tiles[16 + x] = pInputs[x1 + BN];          
       }
   }
 }
@@ -174,7 +169,7 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
   int c_offset = in_h*in_w; 
   int c_tile = blockIdx.x * TW  + blockIdx.y * in_w * TH; 
   int c_tensor = c_tile + (threadIdx.x % tw) * 2 + (threadIdx.x / tw) * in_w * 2 + 
-                threadIdx.y*2*c_offset - (in_w+1);
+                threadIdx.y*c_offset - (in_w+1);
 
       // + threadIdx.y*(in_h*in_w) + (in_w+1);
   // if(threadIdx.x/in_n != 0){
@@ -203,7 +198,6 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
       for(int j=0; j<4; j++){
         x = (i<<2) + j;
         tile[x] = pInputs[acumm + j + c_tensor]; //1st channel
-        tile[x + 16] = pInputs[acumm + j + c_tensor + c_offset];//2nd channel
         // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
         //   && threadIdx.x == 31 && threadIdx.y == 0){
         //      printf("A, %d, %d, %d, %f, %d\n", i, j, acumm+j, tile[(i<<2) + j],acumm + j + c_tensor);   
@@ -217,11 +211,9 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
       // #pragma unroll
       for(int j=0; j<4; j++){
         x = (i<<2) + j;
-        tile[x] = 0.f;
-        tile[x+16] = 0.f;
+        tile[x] = 0.f;        
         if(mask&(1<<x)){
-          tile[x]=pInputs[acumm + j + c_tensor];
-          tile[x+16]=pInputs[acumm + j + c_tensor + c_offset];
+          tile[x]=pInputs[acumm + j + c_tensor];          
         }
         // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
         //   && threadIdx.x == 0 && threadIdx.y == 0){
@@ -234,7 +226,7 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
 }
 
 
-__device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem, int ki)
+__device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem)
 {
     // load 32x16    
     for (int i = 0; i < 2; ++i)
@@ -244,7 +236,7 @@ __device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, 
 }
 
 
-__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem, int ki)
+__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem)
 // __device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> *frag, half *smem, int ki)
 {
     // load 16x64    
@@ -302,31 +294,30 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   }  
   if(blockIdx.x==0 && (threadIdx.x % X) == 0)   m &=0xeeee;  // pad left col
   
-  half img_tile[32]; // Prefetch input from GMEM
-  half filter_tile[64]; // Prefetch filter from GMEM
+  half img_tile[16]; // Prefetch input from GMEM
+  half filter_tile[32]; // Prefetch filter from GMEM
 
   // float4 input_frag_mem[8];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
   // float4 filter_frag_mem[8]; //2*2 Data to do Outer Product + prefetch f. SMEM (double_buffer)
   // float4 accumulator[2][16] = {0.0f};  // Accumulators 
 
   half *A_frag; // Input data pointer
-  int frag_offset = 2 * (BN*BC); // (2=8/4) SMEM input read offset
+  // int frag_offset = 2 * (BN*BC); // (2=8/4) SMEM input read offset
 
   half *B_frag; // Filter data pointer  
-  int f_frag_offset = 2 * (BC*BK); // (2=8/4 with 4 being float4) SMEM filter read offset 
+  // int f_frag_offset = 2 * (BC*BK); // (2=8/4 with 4 being float4) SMEM filter read offset 
 
   nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragA[BN / wmmaM];
   nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragB[BK / wmmaN];
-  // nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB[BK / wmmaN];
-  nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[2 * BN / wmmaM * BK / wmmaN];
+  nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[BN / wmmaM * BK / wmmaN];
 
-  for (int k = 0; k < 2; k++){
-    for (int mii = 0; mii < BN / wmmaM; mii += 1){
-      for (int nii = 0; nii < BK / wmmaN; nii += 1){
-        nvcuda::wmma::fill_fragment(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 0.f);      
-      }
+  
+  for (int mii = 0; mii < BN / wmmaM; mii += 1){
+    for (int nii = 0; nii < BK / wmmaN; nii += 1){
+      nvcuda::wmma::fill_fragment(Accum[mii * (BK / wmmaN) + nii], 0.f);      
     }
   }
+  
 
   prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
   prefetch_filter_tile(B, filter_tile, filt_k);
@@ -386,33 +377,33 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
        
     // now both input and filter tiles are in smem, we can load wmma frags and do wmma computation  
     
-    for(int k = 0; k < 2; k++){
-      A_frag = input_smem  + threadIdx.y*BN*BC + k*8*BN*BC;
-      B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
-      
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 4){
-      //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
-      //   printf("iter, k: %d, %d \n ",iter, k);
-      //   for(int j=0; j < 4; j++){
-      //     printf("[");
-      //     for(int i = 0; i < 256; i++){          
-      //       // for(int j = 0; j < 8; j++){
-      //       printf( "%.2f,", __half2float(B_frag[j*256+i]));
-      //       // }
-      //     }
-      //     printf("]\n");
-      //   }
-      // }
+    
+    A_frag = input_smem  + threadIdx.y*BN*BC;
+    B_frag = filter_smem + threadIdx.y*BC*BK;
+    
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 4){
+    //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+    //   printf("iter, k: %d, %d \n ",iter, k);
+    //   for(int j=0; j < 4; j++){
+    //     printf("[");
+    //     for(int i = 0; i < 256; i++){          
+    //       // for(int j = 0; j < 8; j++){
+    //       printf( "%.2f,", __half2float(B_frag[j*256+i]));
+    //       // }
+    //     }
+    //     printf("]\n");
+    //   }
+    // }
 
-      loadFragA(FragA, A_frag, k);
-      loadFragB(FragB, B_frag, k);
-      for(int mii = 0; mii < BN / wmmaM; mii++){
-        for(int nii = 0; nii < BK / wmmaN; nii++){
-            // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 
-            FragA[mii], FragB[nii], Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii]);
-        }
+    loadFragA(FragA, A_frag);
+    loadFragB(FragB, B_frag);
+    for(int mii = 0; mii < BN / wmmaM; mii++){
+      for(int nii = 0; nii < BK / wmmaN; nii++){
+          // 16x16x16 for each wmma
+          nvcuda::wmma::mma_sync(Accum[mii * (BK / wmmaN) + nii], 
+          FragA[mii], FragB[nii], Accum[ mii * (BK / wmmaN) + nii]);
       }
+    }
       
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.y == 0){
@@ -425,7 +416,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       //   printf("]\n");   
       // }
 
-    }
+    
     // __syncthreads();
     
     
@@ -468,7 +459,7 @@ cudaError_t convolutionForward_32Tx64x8(half *k, int in_h, int in_w, half *w, in
   // each thread block will load 32 tiles (4x4) from the single image input
   // we let X*Y = 32 and arbitraraly pick X = 4 and Y = 8
   // Winograd_kernel<<<dim3(1, tiles_2d_dim, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, 
-  Winograd_kernel<<<dim3((tiles_dim_w+X-1)/X, (tiles_dim_h+Y-1)/Y, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C,
+  Winograd_kernel<<<dim3((tiles_dim_w+X-1)/X, (tiles_dim_h+Y-1)/Y, filt_k/BK), dim3(BN, BC), smem_size>>>(k, Ww, C,
   tiles_dim_w, tiles_dim_h, in_c, in_h, in_w, tile_size, X, Y, filt_k, filt_c, out_c, tile_2d_s, out_h, out_w);
 
   return cudaGetLastError();
