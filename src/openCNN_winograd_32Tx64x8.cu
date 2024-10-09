@@ -463,8 +463,8 @@ int main(int argc, char *argv[]) {
         pad_h, pad_w, str_h, str_w, dil_h, dil_w,
         CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));  //CUDNN_CONVOLUTION
 
-  CUDNN_CALL(cudnnSetConvolutionMathType(
-    conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
+  // CUDNN_CALL(cudnnSetConvolutionMathType(
+  //   conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
     
   
   

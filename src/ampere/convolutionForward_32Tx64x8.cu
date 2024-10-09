@@ -121,23 +121,24 @@ __device__ __forceinline__ void load_filter_tile(const half *tiles, half *pOutpu
       #pragma unroll
       for(int j=0; j<4; j++){
         pOutputs[c_tensor_s + i*c_offset_s*4 + j*c_offset_s]     = tiles[k*16 + i*4 + j];
-      }
-    }
-    // 2nd tile right behind the 1st?
-    c_tensor_s += BN*BC; // BN has nothing to do with input tiles
-  }
-
-  c_tensor_s = threadIdx.x*BC + threadIdx.y*2;
-  for(int k=0; k<2; k++){ // prefetch 2 filter tiles of 1 channel/thread
-    for(int i=0; i<4; i++){
-      #pragma unroll
-      for(int j=0; j<4; j++){  
         pOutputs[c_tensor_s + i*c_offset_s*4 + j*c_offset_s + 1] = tiles[32 + k*16 + i*4 + j]; //32 = 2*BC
       }
     }
     // 2nd tile right behind the 1st?
     c_tensor_s += BN*BC; // BN has nothing to do with input tiles
   }
+
+  // c_tensor_s = threadIdx.x*BC + threadIdx.y*2;
+  // for(int k=0; k<2; k++){ // prefetch 2 filter tiles of 1 channel/thread
+  //   for(int i=0; i<4; i++){
+  //     #pragma unroll
+  //     for(int j=0; j<4; j++){  
+  //       pOutputs[c_tensor_s + i*c_offset_s*4 + j*c_offset_s + 1] = tiles[32 + k*16 + i*4 + j]; //32 = 2*BC
+  //     }
+  //   }
+  //   // 2nd tile right behind the 1st?
+  //   c_tensor_s += BN*BC; // BN has nothing to do with input tiles
+  // }
   
 }
 
