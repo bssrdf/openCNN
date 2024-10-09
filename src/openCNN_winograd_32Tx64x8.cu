@@ -191,7 +191,7 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = 0;
+  int kk = -1;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -487,9 +487,9 @@ int main(int argc, char *argv[]) {
   // =================== Query convolution forward algorithm =================== //
   // cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
-  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
-  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_GEMM;
 
   // =================== Query workspace and allocate =================== //
@@ -526,7 +526,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 0;
+  int iterations = 20;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,

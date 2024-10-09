@@ -390,16 +390,18 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       A_frag = input_smem  + threadIdx.y*BN*BC + k*8*BN*BC;
       B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
       
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 4){
       //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
       //   printf("iter, k: %d, %d \n ",iter, k);
-      //   printf("[");
-      //   for(int i = 0; i < 256; i++){          
-      //     // for(int j = 0; j < 8; j++){
-      //     printf( "%.2f,", __half2float(B_frag[i]));
-      //     // }
+      //   for(int j=0; j < 4; j++){
+      //     printf("[");
+      //     for(int i = 0; i < 256; i++){          
+      //       // for(int j = 0; j < 8; j++){
+      //       printf( "%.2f,", __half2float(B_frag[j*256+i]));
+      //       // }
+      //     }
+      //     printf("]\n");
       //   }
-      //   printf("]\n");
       // }
 
       loadFragA(FragA, A_frag, k);
@@ -407,8 +409,8 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       for(int mii = 0; mii < BN / wmmaM; mii++){
         for(int nii = 0; nii < BK / wmmaN; nii++){
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BN / wmmaN) + nii], 
-            FragA[mii], FragB[nii], Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BN / wmmaN) + nii]);
+            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 
+            FragA[mii], FragB[nii], Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii]);
         }
       }
       

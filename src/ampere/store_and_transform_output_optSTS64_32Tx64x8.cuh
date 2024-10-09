@@ -264,18 +264,18 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
     // int id2 = tileid[1][l];
 
 
-    int tx = 12, ty=0; 
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("round, %d, [", round);
+    // int tx = 0, ty=0; 
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
-        printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
-      }
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
+      //   printf("(%d, %.0f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
+      // }
     }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("]\n");   
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
