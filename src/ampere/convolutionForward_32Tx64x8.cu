@@ -167,6 +167,43 @@ __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *
   }
 }
 
+
+__device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_k, int ko){
+
+  int c_offset = (filt_k<<4);
+  int c_tensor = blockIdx.z*BK; //+ threadIdx.y*2*c_offset + threadIdx.x; // Iny*filt_k*4*4
+
+  // each threadIdx.y corresponds to 2 channels; there are 8 different threadIdx.y so 16 channels 
+  // each threadx load 16 filters in K 
+  //each thread (32 threads in x direction) loads 4 kernel tiles (2 for each channel and 32 in K direction apart)
+  
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  
+  int cid = ty * 2 + tx / BC; 
+  tx = tx % 16;
+  int eid = ( tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
+  
+  for(int k = 0; k < 2; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
+
+    void *ptr = (void *)(smem + tx*(BC*16) + cid * BC + k * 8);
+    unsigned int smem_ptr;
+
+    asm("{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 "
+        "%0, smem_ptr; }\n"
+        : "=r"(smem_ptr)
+        : "l"(ptr));
+
+    asm volatile("cp.async.cg.shared.global [%0], [%1], %2;\n" ::"r"(smem_ptr),
+                "l"(&pInputs[c_tensor + cid * c_offset + eid + k * 8 + ko * BC]),
+                "n"(16));
+  }
+
+  
+}
+
+
+
 __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *tile, int in_h, 
                        int in_w, int tw, int th, unsigned short mask){
   
@@ -245,14 +282,13 @@ __device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, 
 }
 
 
-__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem, int ki)
-// __device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> *frag, half *smem, int ki)
+__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> frag, half *smem, int ki)
 {
-    // load 16x64    
-    for (int i = 0; i < 4; ++i)
-    {      
-      nvcuda::wmma::load_matrix_sync(frag[i], smem + i * (wmmaN*wmmaK), 16);
-    }
+    // load 16x16    
+    // for (int i = 0; i < 2; ++i)
+    // {      
+      nvcuda::wmma::load_matrix_sync(frag, smem + threadIdx.y*(wmmaN*wmmaK)+ ki * 8 *(wmmaN*wmmaK) , 16);
+    // }
 }
 
 
@@ -304,20 +340,24 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   if(blockIdx.x==0 && (threadIdx.x % X) == 0)   m &=0xeeee;  // pad left col
   
   half img_tile[32]; // Prefetch input from GMEM
-  half filter_tile[64]; // Prefetch filter from GMEM
+  // half filter_tile[64]; // Prefetch filter from GMEM
 
   // float4 input_frag_mem[8];  //2*2(2*8/4) Data to do Outer Product + prefetch f. SMEM (double_buffer)
   // float4 filter_frag_mem[8]; //2*2 Data to do Outer Product + prefetch f. SMEM (double_buffer)
   // float4 accumulator[2][16] = {0.0f};  // Accumulators 
 
   half *A_frag; // Input data pointer
-  int frag_offset = 2 * (BN*BC); // (2=8/4) SMEM input read offset
 
-  half *B_frag; // Filter data pointer  
-  int f_frag_offset = 2 * (BC*BK); // (2=8/4 with 4 being float4) SMEM filter read offset 
+  // half *B_frag; // Filter data pointer  
+  half *B_frag1 =  filter_smem;
+  half *B_frag2 =  B_frag1 + 4*BC*BK;  // 16*BC*BK/4 = 4*BC*BK
+  half *B_frag3 =  B_frag2 + 4*BC*BK;
+  half *B_frag4 =  B_frag3 + 4*BC*BK;
 
-  nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragA[BN / wmmaM];
-  nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragB[BK / wmmaN];
+
+
+  nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragA[2 * BN / wmmaM];
+  nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB;
   // nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB[BK / wmmaN];
   nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[2 * BN / wmmaM * BK / wmmaN];
 
@@ -330,7 +370,15 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   }
 
   prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
-  prefetch_filter_tile(B, filter_tile, filt_k);
+  prefetch_filter_tile_async(B, B_frag1, filt_k, 0);  
+  asm volatile("cp.async.commit_group;\n" ::);
+  prefetch_filter_tile_async(B, B_frag2, filt_k, 1);  
+  asm volatile("cp.async.commit_group;\n" ::);
+  prefetch_filter_tile_async(B, B_frag3, filt_k, 2);  
+  asm volatile("cp.async.commit_group;\n" ::);
+  // int ko = 0;
+  
+  // prefetch_filter_tile(B, filter_tile, filt_k);
 
   // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 1 && threadIdx.y == 0){
   //   printf("[");
@@ -380,39 +428,45 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     //   }
 
     load_and_transform_input_tile(img_tile, input_smem);
-    load_filter_tile(filter_tile, filter_smem, filt_c, filt_k);
+    // load_filter_tile(filter_tile, filter_smem, filt_c, filt_k);
 
     __syncthreads();
 
-       
-    // now both input and filter tiles are in smem, we can load wmma frags and do wmma computation  
-    
     for(int k = 0; k < 2; k++){
       A_frag = input_smem  + threadIdx.y*BN*BC + k*8*BN*BC;
-      B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
+      // B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
       
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 4){
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
       //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
       //   printf("iter, k: %d, %d \n ",iter, k);
       //   for(int j=0; j < 4; j++){
       //     printf("[");
       //     for(int i = 0; i < 256; i++){          
       //       // for(int j = 0; j < 8; j++){
-      //       printf( "%.2f,", __half2float(B_frag[j*256+i]));
+      //       printf( "%.2f,", __half2float(A_frag[j*256+i]));
       //       // }
       //     }
       //     printf("]\n");
       //   }
       // }
+      loadFragA(FragA + k * BN / wmmaM, A_frag, k);
+    }
+  
 
-      loadFragA(FragA, A_frag, k);
-      loadFragB(FragB, B_frag, k);
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    __syncthreads();   
+    // now both input and filter tiles are in smem, we can load wmma frags and do wmma computation  
+    // if(iter<(in_c-BC)){ // ???should there be a if here
+      prefetch_filter_tile_async(B, B_frag4, filt_k, 2);  
+      asm volatile("cp.async.commit_group;\n" ::);
+    // }
+
+    for(int k = 0; k < 2; k++){
+      loadFragB(FragB, B_frag1, k);
       for(int mii = 0; mii < BN / wmmaM; mii++){
-        for(int nii = 0; nii < BK / wmmaN; nii++){
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 
-            FragA[mii], FragB[nii], Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii]);
-        }
+            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0], 
+          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
       }
       
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
@@ -427,15 +481,53 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       // }
 
     }
+
     // __syncthreads();
-    
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    __syncthreads();   
+    for(int k = 0; k < 2; k++){
+      loadFragB(FragB, B_frag2, k);
+      for(int mii = 0; mii < BN / wmmaM; mii++){     
+            // 16x16x16 for each wmma
+            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1], 
+          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1]);     
+      }     
+    }
+
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    __syncthreads();   
+    for(int k = 0; k < 2; k++){
+      loadFragB(FragB, B_frag3, k);
+      for(int mii = 0; mii < BN / wmmaM; mii++){     
+            // 16x16x16 for each wmma
+            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2], 
+          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2]);     
+      }     
+    }
+
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
+    __syncthreads();   
+    for(int k = 0; k < 2; k++){
+      loadFragB(FragB, B_frag4, k);
+      for(int mii = 0; mii < BN / wmmaM; mii++){     
+            // 16x16x16 for each wmma
+            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3], 
+          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3]);     
+      }     
+    }
     
     A += BC*in_w*in_h;
     B += filt_k*BC*4*4;
 
     if(iter<(in_c-BC)){
       prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
-      prefetch_filter_tile(B, filter_tile, filt_k);
+      // prefetch_filter_tile(B, filter_tile, filt_k);
+      prefetch_filter_tile_async(B, B_frag1, filt_k, 0);  
+      asm volatile("cp.async.commit_group;\n" ::);
+      prefetch_filter_tile_async(B, B_frag2, filt_k, 1);  
+      asm volatile("cp.async.commit_group;\n" ::);
+      prefetch_filter_tile_async(B, B_frag3, filt_k, 2);  
+      asm volatile("cp.async.commit_group;\n" ::);
     }
 
     __syncthreads();
