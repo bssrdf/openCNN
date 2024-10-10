@@ -179,14 +179,14 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   
   int tx = threadIdx.x;
   int ty = threadIdx.y;
-  
-  int cid = ty * 2 + tx / BC; 
+  int tid = ty*32+tx;
+  int cid = tid / BC; 
   tx = tx % 16;
   int eid = ( tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
   
   for(int k = 0; k < 2; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
 
-    void *ptr = (void *)(smem + tx*(BC*16) + cid * BC + k * 8);
+    void *ptr = (void *)(smem + tx*(BC*16) + cid * 16 + k * 8);
     unsigned int smem_ptr;
 
     asm("{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 "
@@ -282,7 +282,7 @@ __device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, 
 }
 
 
-__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> frag, half *smem, int ki)
+__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> &frag, half *smem, int ki)
 {
     // load 16x16    
     // for (int i = 0; i < 2; ++i)
@@ -301,7 +301,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
                     int out_c,
                     int tile_2d_s, int out_h, int out_w){
 
-  __align__(128) extern __shared__ unsigned char shared_mem[];
+  extern __shared__ unsigned char shared_mem[];
   half *input_smem  = reinterpret_cast<half *>(shared_mem);
   half *filter_smem = input_smem + 16*BC*BN;
 
@@ -457,7 +457,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     __syncthreads();   
     // now both input and filter tiles are in smem, we can load wmma frags and do wmma computation  
     // if(iter<(in_c-BC)){ // ???should there be a if here
-      prefetch_filter_tile_async(B, B_frag4, filt_k, 2);  
+      prefetch_filter_tile_async(B, B_frag4, filt_k, 3);  
       asm volatile("cp.async.commit_group;\n" ::);
     // }
 
@@ -467,17 +467,32 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
             // 16x16x16 for each wmma
             nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0], 
           FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
+          // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
+          //    printf("AA %d, %d, %d \n", k, mii, k *(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0);
       }
       
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.y == 0){
-      //   printf("%d, %d, [", iter, k);
+      //   printf("%d, %d, %d [", iter, k, threadIdx.x);
       //   // for(int t=0; t<Accum[0].num_elements; t++)
-      //   //    printf("(%f,%f)", Accum[0].x[t],Accum[4].x[t]); 
-      //   for(int t=0; t<FragA[0].num_elements; t++)
-      //      printf("%.1f ", __half2float(FragA[1].x[t]));    
+      //     //  printf("(%f,%f)", Accum[0].x[t],Accum[4].x[t]); 
+      //   for(int t=0; t<FragB.num_elements; t++)
+      //      printf("%f, ", __half2float(FragB.x[t]));    
       //     //  printf("%f", __half2float(FragA[0].x[t]), __half2float(FragA[1].x[t]));    
       //   printf("]\n");   
+      // }
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+      //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+      //   printf("iter, k: %d, %d \n ",iter, k);
+      //   for(int j=0; j < 1; j++){
+      //     printf("[");
+      //     for(int i = 0; i < 256; i++){          
+      //       // for(int j = 0; j < 8; j++){
+      //       printf( "%.2f,", __half2float(B_frag1[j*256+i]));
+      //       // }
+      //     }
+      //     printf("]\n");
+      //   }
       // }
 
     }
@@ -494,7 +509,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       }     
     }
 
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
     __syncthreads();   
     for(int k = 0; k < 2; k++){
       loadFragB(FragB, B_frag3, k);
@@ -505,7 +520,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       }     
     }
 
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(0));
     __syncthreads();   
     for(int k = 0; k < 2; k++){
       loadFragB(FragB, B_frag4, k);
