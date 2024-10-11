@@ -51,7 +51,7 @@ extern "C"
 
 #define d(input, i, j, off) ( input[(i<<2) + (j) + (off)] )
 
-__device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
+/*__device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
 
   half workspace[3]; 
   int c_offset = BC*BN;
@@ -98,6 +98,57 @@ __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *p
     }     
     offset += 16;
     offset1 += 1;
+  }
+
+}*/
+
+__device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
+
+  half workspace[3]; 
+  int c_offset = BC*BN;
+  int c_tensor = threadIdx.x + threadIdx.y*2*BN;
+  int offset = 0;
+  for(int k=0; k<2; k++){
+    #pragma unroll
+    for(int j=0; j<4; j++){
+      workspace[0] = Btd[j+offset];
+      workspace[1] = Btd[j+offset+4];
+      workspace[2] = Btd[j+offset+8];
+
+      Btd[j+offset]    = workspace[0] - workspace[2];
+      Btd[j+4+offset]  = workspace[1] + workspace[2];
+      Btd[j+8+offset]  = workspace[2] - workspace[1];
+      Btd[j+12+offset] = workspace[1] - Btd[j+12+offset];
+    }  
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 1 && threadIdx.y == 0){
+    //   printf("[");
+    //   for(int j = 0; j < 16; j++){
+    //     printf( "%f,", __half2float(Btd[j+offset]));
+    //   }
+    //   printf("]\n");      
+    //  }
+    int offset1 = ((threadIdx.x % 2) ^ k) * BN;
+    #pragma unroll
+    for(int i=0; i<4; i++){ // prefetch 1 input tile/thread
+      pOutputs[c_tensor+i*c_offset*4 + offset1] = d(Btd, i, 0, offset) - d(Btd, i, 2, offset);  
+      pOutputs[c_tensor+i*c_offset*4+c_offset + offset1] = d(Btd, i, 1, offset) + d(Btd, i, 2, offset);
+      pOutputs[c_tensor+i*c_offset*4+2*c_offset + offset1] = d(Btd, i, 2, offset) - d(Btd, i, 1, offset);
+      pOutputs[c_tensor+i*c_offset*4+3*c_offset + offset1] = d(Btd, i, 1, offset) - d(Btd, i, 3, offset);
+      // if(pOutputs[c_tensor+i*c_offset*4] < 0.f)
+      //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4]);
+      // if(pOutputs[c_tensor+i*c_offset*4+c_offset] < 0.f)
+      //     printf(" B, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+c_offset]);
+      // if(pOutputs[c_tensor+i*c_offset*4+2*c_offset] < 0.f)
+      //     printf(" C, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+2*c_offset]);
+      // if(pOutputs[c_tensor+i*c_offset*4+3*c_offset] < 0.f)
+      //     printf(" D, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
+      //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4+3*c_offset]);
+    }     
+    offset += 16;
+    // offset1 += 1;
   }
 
 }
@@ -214,8 +265,8 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   int tid = ty*32+tx;
   int cid = (tid % 128) / 8;   
   int kid = tx % 8;
-  tx = tx % 16;
-  int eid = (tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
+  // tx = tx % 16;
+  // int eid = (tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
   
   for(int k = 0; k < 8; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
 
@@ -303,12 +354,13 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
 }
 
 
-__device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> *frag, half *smem, int ki)
+__device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> *frag, half *smem, int ki)
 {
     // load 32x16    
     for (int i = 0; i < 2; ++i)
     {        
-      nvcuda::wmma::load_matrix_sync(frag[i], smem + i * (wmmaM*wmmaK), 16);
+      // nvcuda::wmma::load_matrix_sync(frag[i], smem + i * (wmmaM*wmmaK), 16);
+      nvcuda::wmma::load_matrix_sync(frag[i], smem + i*wmmaK, 32);
     }
 }
 
@@ -387,7 +439,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
 
 
-  nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::row_major> FragA[2 * BN / wmmaM];
+  nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragA[2 * BN / wmmaM];
   nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB;
   // nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB[BK / wmmaN];
   nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[2 * BN / wmmaM * BK / wmmaN];
