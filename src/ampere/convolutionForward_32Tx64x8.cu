@@ -168,7 +168,7 @@ __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *
 }
 
 
-__device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_k, int ko){
+/*__device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_k, int ko){
 
   int c_offset = (filt_k<<4);
   int c_tensor = blockIdx.z*BK; //+ threadIdx.y*2*c_offset + threadIdx.x; // Iny*filt_k*4*4
@@ -198,8 +198,39 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
                 "l"(&pInputs[c_tensor + cid * c_offset + eid + k * 8 + ko * BC]),
                 "n"(16));
   }
+}*/
 
+__device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_k, int ko){
+
+  int c_offset = (filt_k<<4);
+  int c_tensor = blockIdx.z*BK; //+ threadIdx.y*2*c_offset + threadIdx.x; // Iny*filt_k*4*4
+
+  // each threadIdx.y corresponds to 2 channels; there are 8 different threadIdx.y so 16 channels 
+  // each threadx load 16 filters in K 
+  //each thread (32 threads in x direction) loads 4 kernel tiles (2 for each channel and 32 in K direction apart)
   
+  int tx = threadIdx.x;
+  int ty = threadIdx.y;
+  int tid = ty*32+tx;
+  int cid = (tid % 128) / 8;   
+  int kid = tx % 8;
+  tx = tx % 16;
+  int eid = (tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
+  
+  for(int k = 0; k < 8; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
+
+    void *ptr = (void *)(smem + k*2*(BC*16) + (ty/4)*(BC*16) + cid * 16 + kid*2);
+    unsigned int smem_ptr;
+
+    asm("{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 "
+        "%0, smem_ptr; }\n"
+        : "=r"(smem_ptr)
+        : "l"(ptr));
+
+    asm volatile("cp.async.ca.shared.global [%0], [%1], %2;\n" ::"r"(smem_ptr),
+                "l"(&pInputs[c_tensor + cid * c_offset + (k/2)*(filt_k<<2) + (k%2==0 ? (ty/4)*filt_k : (2+(ty/4))*filt_k) + kid*2 + ko * BC]),
+                "n"(4));
+  }
 }
 
 
