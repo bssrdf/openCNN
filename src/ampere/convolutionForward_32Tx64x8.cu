@@ -354,24 +354,74 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
 }
 
 
-__device__ void loadFragA(nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> *frag, half *smem, int ki)
+__device__ void loadFragA(unsigned int *frag, half *smem, int ki)
 {
     // load 32x16    
-    for (int i = 0; i < 2; ++i)
-    {        
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    for (int i = 0; i < 2; ++i){        
       // nvcuda::wmma::load_matrix_sync(frag[i], smem + i * (wmmaM*wmmaK), 16);
-      nvcuda::wmma::load_matrix_sync(frag[i], smem + i*wmmaK, 32);
+      // nvcuda::wmma::load_matrix_sync(frag[i], smem + i*wmmaK, 32);
+      unsigned int *ptr = reinterpret_cast<unsigned int *>(smem + row / 16 * (2 * 16 * 16) + col / 16 * (16 * 16) + row % 16 * 16 + col % 16);
+      frag[i * 4 + j * 2 + k] = ptr[0];
     }
 }
 
 
-__device__ void loadFragB(nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> &frag, half *smem, int ki)
+__device__ void loadFragB(unsigned int *frag, half *smem, int ki)
 {
     // load 16x16    
     // for (int i = 0; i < 2; ++i)
     // {      
       nvcuda::wmma::load_matrix_sync(frag, smem + threadIdx.y*(wmmaN*wmmaK)+ ki * 8 *(wmmaN*wmmaK) , 16);
     // }
+}
+
+__device__ void mmaSync(unsigned int *fragA, unsigned int *fragB, float *accum)
+{
+    asm volatile(
+        "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 "
+        "{%0,  %1,  %2,  %3},"
+        "{%4,  %5},"
+        "{%6},"
+        "{%7,  %8,  %9,  %10};\n"
+        : "=f"(accum[0]), "=f"(accum[1]), "=f"(accum[4]), "=f"(accum[5])
+        : "r"(fragA[0]), "r"(fragA[2]),
+          "r"(fragB[0]),
+          "f"(accum[0]), "f"(accum[1]), "f"(accum[4]), "f"(accum[5]));
+
+    asm volatile(
+        "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 "
+        "{%0,  %1,  %2,  %3},"
+        "{%4,  %5},"
+        "{%6},"
+        "{%7,  %8,  %9,  %10};\n"
+        : "=f"(accum[0]), "=f"(accum[1]), "=f"(accum[4]), "=f"(accum[5])
+        : "r"(fragA[1]), "r"(fragA[3]),
+          "r"(fragB[1]),
+          "f"(accum[0]), "f"(accum[1]), "f"(accum[4]), "f"(accum[5]));
+
+    asm volatile(
+        "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 "
+        "{%0,  %1,  %2,  %3},"
+        "{%4,  %5},"
+        "{%6},"
+        "{%7,  %8,  %9,  %10};\n"
+        : "=f"(accum[2]), "=f"(accum[3]), "=f"(accum[6]), "=f"(accum[7])
+        : "r"(fragA[0]), "r"(fragA[2]),
+          "r"(fragB[2]),
+          "f"(accum[2]), "f"(accum[3]), "f"(accum[6]), "f"(accum[7]));
+
+    asm volatile(
+        "mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 "
+        "{%0,  %1,  %2,  %3},"
+        "{%4,  %5},"
+        "{%6},"
+        "{%7,  %8,  %9,  %10};\n"
+        : "=f"(accum[2]), "=f"(accum[3]), "=f"(accum[6]), "=f"(accum[7])
+        : "r"(fragA[1]), "r"(fragA[3]),
+          "r"(fragB[3]),
+          "f"(accum[2]), "f"(accum[3]), "f"(accum[6]), "f"(accum[7]));
 }
 
 
@@ -439,18 +489,21 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
 
 
-  nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragA[2 * BN / wmmaM];
-  nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB;
-  // nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB[BK / wmmaN];
-  nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[2 * BN / wmmaM * BK / wmmaN];
+  // nvcuda::wmma::fragment<nvcuda::wmma::matrix_a, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragA[2 * BN / wmmaM];
+  // nvcuda::wmma::fragment<nvcuda::wmma::matrix_b, wmmaM, wmmaN, wmmaK, half, nvcuda::wmma::col_major> FragB;  
+  // nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> Accum[2 * BN / wmmaM * BK / wmmaN];
 
-  for (int k = 0; k < 2; k++){
-    for (int mii = 0; mii < BN / wmmaM; mii += 1){
-      for (int nii = 0; nii < BK / wmmaN; nii += 1){
-        nvcuda::wmma::fill_fragment(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 0.f);      
-      }
-    }
-  }
+  // for (int k = 0; k < 2; k++){
+  //   for (int mii = 0; mii < BN / wmmaM; mii += 1){
+  //     for (int nii = 0; nii < BK / wmmaN; nii += 1){
+  //       nvcuda::wmma::fill_fragment(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + nii], 0.f);      
+  //     }
+  //   }
+  // }
+
+  unsigned int FragA[2 * BN / wmmaM * 4];      //  4 int32 = 8 half
+  unsigned int FragB[4];      // 4 int32 = 8 half
+  float Accum[2 * BN / wmmaM * BK / wmmaN * 8] = {0.0}; // [4, 2, 8]
 
   prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
   prefetch_filter_tile_async(B, B_frag1, filt_k, 0);  
