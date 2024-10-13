@@ -404,7 +404,7 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     // row/tile 0, col/channel (0, 1, 8, 9) and row/tile 8, col/chennel (0, 1, 8, 9)
     // to avoid bank conflicts, we can make threads in a warp coordinate the loading by using 
     // specially designed offsets
-    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive super tiles, 
+    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive super tiles,
     // which results in bank conflicts. We let them load in an interleaving way:
     // first (0, 1, 0, 1, 0, 1, 0, 1)
     // then  (1, 0, 1, 0, 1, 0, 1, 0)
@@ -437,30 +437,59 @@ __device__ void loadFragB(unsigned int *frag, half *smem, int ki)
     // so we need to fill 4 8x8 B matrices;
     // for each 8x8 matrix B, thread 0 loads 2 elements (a0, a1) and they are
     // row 0,1 col 0
-    // so from the point of view the 16x16 matrix, all 8 elements for thread 0 are
+    // so from the point of view of the 16x16 matrix, all 8 elements for thread 0 are
     // row/channel (0, 1) col/K 0 , row/channel (8, 9), col/K 0
     // row/channel (0, 1) col/K 8 , row/channel (8, 9), col/K 8
     // to avoid bank conflicts, we can make threads in a warp coordinate the loading by using 
     // specially designed offsets
-    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive super tiles, 
+    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive filters in K,
     // which results in bank conflicts. We let them load in an interleaving way:
     // first (0, 1, 0, 1, 0, 1, 0, 1)
     // then  (1, 0, 1, 0, 1, 0, 1, 0)
     // so in each round, successive threads load different channels and avoid conflicts
-    // similarly for the otehr 24 threads
+    // similarly for the other 24 threads
+    // note the code is very similar to loadFragA
     int tx = threadIdx.x;
     int ty = threadIdx.y;
     half *fragB = (half *)frag;
-    for (int i = 0; i < 2; ++i){        
-      for (int k = 0; k < 2; ++k){      
-        //                      | tile element  |   |   channel          |  |     super tile      |
-        fragA[i*8+k*4+0] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+1] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+2] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+3] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
-      }      
+    for (int k = 0; k < 2; ++k){
+      //                  | tile element  |   |   channel          |  |       K      |
+      fragA[k*4+0] = smem[(ki*8+ty)*(BC*BC) + BC*access_s[0][tx]     + tx / 4 + k * 8];
+      fragA[k*4+1] = smem[(ki*8+ty)*(BC*BC) + BC*access_s[1][tx]     + tx / 4 + k * 8];
+      fragA[k*4+2] = smem[(ki*8+ty)*(BC*BC) + BC*(access_s[0][tx]+8) + tx / 4 + k * 8];
+      fragA[k*4+3] = smem[(ki*8+ty)*(BC*BC) + BC*(access_s[1][tx]+8) + tx / 4 + k * 8];
     }
 }
+
+
+// Fragments layouts for A and B
+// used by mmaSync
+// each mma.sync.aligned.m16n8k8 takes 2 FragA and 1 FragB
+//                FragA
+//   ______________________________
+//  |              |               |
+//  |      0       |        1      |
+//  |              |               |
+//  |______________|_______________|
+//  |              |               |
+//  |              |               |
+//  |      2       |        3      |
+//  |              |               |
+//  |______________|_______________|
+
+
+//                FragB
+//   ______________________________
+//  |              |               |
+//  |      0       |        2      |
+//  |              |               |
+//  |______________|_______________|
+//  |              |               |
+//  |              |               |
+//  |      1       |        3      |
+//  |              |               |
+//  |______________|_______________|
+
 
 __device__ void mmaSync(unsigned int *fragA, unsigned int *fragB, float *accum)
 {
@@ -686,8 +715,9 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       loadFragB(FragB, B_frag1, k);
       for(int mii = 0; mii < BN / wmmaM; mii++){
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0], 
-          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
+             mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 0]);
+          //   mmaSync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0],
+          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
           // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
           //    printf("AA %d, %d, %d \n", k, mii, k *(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0);
       }
@@ -723,10 +753,11 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     __syncthreads();   
     for(int k = 0; k < 2; k++){
       loadFragB(FragB, B_frag2, k);
-      for(int mii = 0; mii < BN / wmmaM; mii++){     
+      for(int mii = 0; mii < BN / wmmaM; mii++){
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1], 
-          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1]);     
+            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 8]);
+          //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1],
+          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1]);
       }     
     }
 
@@ -736,8 +767,9 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       loadFragB(FragB, B_frag3, k);
       for(int mii = 0; mii < BN / wmmaM; mii++){     
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2], 
-          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2]);     
+            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 16]);
+          //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2],
+          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2]);
       }     
     }
 
@@ -745,10 +777,11 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     __syncthreads();   
     for(int k = 0; k < 2; k++){
       loadFragB(FragB, B_frag4, k);
-      for(int mii = 0; mii < BN / wmmaM; mii++){     
+      for(int mii = 0; mii < BN / wmmaM; mii++){
             // 16x16x16 for each wmma
-            nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3], 
-          FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3]);     
+            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 24]);
+          //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3],
+          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3]);
       }     
     }
     
