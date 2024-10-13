@@ -102,6 +102,14 @@ extern "C"
 
 }*/
 
+
+// smem layout for input tile
+// ___________32T(C0)______32T(C1)____... _____32T(C15) E0
+// ___________32T(C0)______32T(C1)____... _____32T(C15) E1
+// .....
+// .....
+// ___________32T(C0)______32T(C1)____... _____32T(C15) E15
+
 __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
 
   half workspace[3]; 
@@ -357,13 +365,31 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
 __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
 {
     // load 32x16    
+    // we use mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 to do 16x16x16 mm,
+    // so we need to fill 2 16x8 A matrices;
+    // for each 16x8 matrix A, each thread loads 4 elements (a0, a1, a2, a3) and they are
+    // row 0, col 0,1 and row 8 col 0,1
+    // so from the point of view the 16x16 matrix, all 8 elemets for thread 0 are
+    // row/tile 0, col/channel (0, 1, 8, 9) and row/tile 8, col/chennel (0, 1, 8, 9)
+    // to avoid bank conflicts, we can make threads in a warp coordinate the loading by using 
+    // specially designed offsets
+    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive super tiles, 
+    // which results in bank conflicts. We let them load in an interleaving way:
+    // first (0, 1, 0, 1, 0, 1, 0, 1)
+    // then  (1, 0, 1, 0, 1, 0, 1, 0)
+    // so in each round, successive threads load different channels and avoid conflicts
+    // similarly for the otehr 24 threads
     int tx = threadIdx.x;
     int ty = threadIdx.y;
+    half *fragA = (half *)frag;
     for (int i = 0; i < 2; ++i){        
-      // nvcuda::wmma::load_matrix_sync(frag[i], smem + i * (wmmaM*wmmaK), 16);
-      // nvcuda::wmma::load_matrix_sync(frag[i], smem + i*wmmaK, 32);
-      unsigned int *ptr = reinterpret_cast<unsigned int *>(smem + row / 16 * (2 * 16 * 16) + col / 16 * (16 * 16) + row % 16 * 16 + col % 16);
-      frag[i * 4 + j * 2 + k] = ptr[0];
+      for (int k = 0; k < 2; ++k){      
+        //                      | tile element  |   |   channel          |  |     super tile      |
+        fragA[i*8+k*4+0] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+1] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+2] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+3] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
+      }      
     }
 }
 
@@ -585,7 +611,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       //     printf("]\n");
       //   }
       // }
-      loadFragA(FragA + k * BN / wmmaM, A_frag, k);
+      loadFragA(FragA + k * BN / wmmaM * 4, A_frag, k);
     }
   
 
