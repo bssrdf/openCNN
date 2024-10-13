@@ -259,6 +259,37 @@ __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *
   }
 }*/
 
+
+// smem layout for transformed filter weights 
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E0
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E1
+// .....
+// .....
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E15
+// -- B_Frag1
+
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E0
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E1
+// .....
+// .....
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E15
+// -- B_Frag2
+
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E0
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E1
+// .....
+// .....
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E15
+// -- B_Frag3
+
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E0
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E1
+// .....
+// .....
+// ___________16K(C0)______16K(C1)____... _____16K(C15) E15
+// -- B_Frag4
+
+
 __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_k, int ko){
 
   int c_offset = (filt_k<<4);
@@ -396,11 +427,39 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
 
 __device__ void loadFragB(unsigned int *frag, half *smem, int ki)
 {
+    // // load 16x16    
+    // // for (int i = 0; i < 2; ++i)
+    // // {      
+    //   nvcuda::wmma::load_matrix_sync(frag, smem + threadIdx.y*(wmmaN*wmmaK)+ ki * 8 *(wmmaN*wmmaK) , 16);
+    // // }
     // load 16x16    
-    // for (int i = 0; i < 2; ++i)
-    // {      
-      nvcuda::wmma::load_matrix_sync(frag, smem + threadIdx.y*(wmmaN*wmmaK)+ ki * 8 *(wmmaN*wmmaK) , 16);
-    // }
+    // we use mma.sync.aligned.m16n8k8.row.col.f32.f16.f16.f32 to do 16x16x16 mm,
+    // so we need to fill 4 8x8 B matrices;
+    // for each 8x8 matrix B, thread 0 loads 2 elements (a0, a1) and they are
+    // row 0,1 col 0
+    // so from the point of view the 16x16 matrix, all 8 elements for thread 0 are
+    // row/channel (0, 1) col/K 0 , row/channel (8, 9), col/K 0
+    // row/channel (0, 1) col/K 8 , row/channel (8, 9), col/K 8
+    // to avoid bank conflicts, we can make threads in a warp coordinate the loading by using 
+    // specially designed offsets
+    // T0, T4, T8,..T28 all 8 threads load the same channels (0 and 1) and successive super tiles, 
+    // which results in bank conflicts. We let them load in an interleaving way:
+    // first (0, 1, 0, 1, 0, 1, 0, 1)
+    // then  (1, 0, 1, 0, 1, 0, 1, 0)
+    // so in each round, successive threads load different channels and avoid conflicts
+    // similarly for the otehr 24 threads
+    int tx = threadIdx.x;
+    int ty = threadIdx.y;
+    half *fragB = (half *)frag;
+    for (int i = 0; i < 2; ++i){        
+      for (int k = 0; k < 2; ++k){      
+        //                      | tile element  |   |   channel          |  |     super tile      |
+        fragA[i*8+k*4+0] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+1] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+2] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+3] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
+      }      
+    }
 }
 
 __device__ void mmaSync(unsigned int *fragA, unsigned int *fragB, float *accum)
