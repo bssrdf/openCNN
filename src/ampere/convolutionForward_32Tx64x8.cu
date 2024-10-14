@@ -142,6 +142,10 @@ __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *p
       pOutputs[c_tensor+i*c_offset*4+c_offset + offset1] = d(Btd, i, 1, offset) + d(Btd, i, 2, offset);
       pOutputs[c_tensor+i*c_offset*4+2*c_offset + offset1] = d(Btd, i, 2, offset) - d(Btd, i, 1, offset);
       pOutputs[c_tensor+i*c_offset*4+3*c_offset + offset1] = d(Btd, i, 1, offset) - d(Btd, i, 3, offset);
+
+      if(c_tensor+i*c_offset*4 + offset1 == 16 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0) 
+          printf("XX %f, %d, %d, %d \n", __half2float(pOutputs[c_tensor+i*c_offset*4 + offset1]), 
+          threadIdx.x, threadIdx.y, offset1);
       // if(pOutputs[c_tensor+i*c_offset*4] < 0.f)
       //     printf(" A, (%d, %d,  %d), (%d, %d), %d, %f \n", blockIdx.x, blockIdx.y, blockIdx.z, 
       //          threadIdx.x, threadIdx.y, i, pOutputs[c_tensor+i*c_offset*4]);
@@ -382,11 +386,11 @@ __device__ __forceinline__ void prefetch_input_tile(const half *pInputs, half *t
           tile[x]=pInputs[acumm + j + c_tensor];
           tile[x+16]=pInputs[acumm + j + c_tensor + c_offset];
         }
-        // if(blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
-        //   && threadIdx.x == 0 && threadIdx.y == 0){
-        //      printf("B, %d, %d, %d, %d, %d, %d, %hu, %s, %f, %f, %d, %d\n", i, j, x, acumm+j, c_tensor, c_offset, mask, mask&(1<<x)?"t":"f",
-        //       __half2float(tile[x]), __half2float(tile[x+16]), acumm + j + c_tensor, acumm + j + c_tensor + c_offset);   
-        // }        
+        if(blockIdx.z == 0 && blockIdx.y == 0 && blockIdx.x == 0 && blockIdx.z == 0 
+          && threadIdx.x == 16 && threadIdx.y == 0){
+             printf("B, %d, %d, %d, %d, %d, %d, %hu, %s, %f, %f, %d, %d\n", i, j, x, acumm+j, c_tensor, c_offset, mask, mask&(1<<x)?"t":"f",
+              __half2float(tile[x]), __half2float(tile[x+16]), acumm + j + c_tensor, acumm + j + c_tensor + c_offset);   
+        }        
       }
     }
   }
@@ -420,6 +424,14 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
         fragA[i*8+k*4+1] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+2] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+3] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
+        if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){            
+            printf("%d, %d, [", i, k);
+            for(int l=0; l<4; l++){
+              printf("(%.2f)", __half2float(fragA[i*8+k*4+l]));    
+              // printf("(%.2f)", w[i]);    
+            }
+            printf("]\n");   
+          }
       }      
     }
 }
@@ -546,7 +558,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
                     int tile_size, int X, int Y,
                     int filt_k, int filt_c,
                     int out_c,
-                    int tile_2d_s, int out_h, int out_w){
+                    int out_h, int out_w){
 
   extern __shared__ unsigned char shared_mem[];
   half *input_smem  = reinterpret_cast<half *>(shared_mem);
@@ -616,6 +628,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   // }
 
   unsigned int FragA[2 * BN / wmmaM * 4];      //  4 int32 = 8 half
+  // unsigned int *FragA = (unsigned int *)img_tile;      //  4 int32 = 8 half
   unsigned int FragB[4];      // 4 int32 = 8 half
   float Accum[2 * BN / wmmaM * BK / wmmaN * 8] = {0.0}; // [4, 2, 8]
 
@@ -682,6 +695,20 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
     __syncthreads();
 
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+      //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+        printf("iter: %d \n ",iter);
+        // for(int j=0; j < 4; j++){
+          printf("[");
+          for(int i = 0; i < 32; i++){          
+            // for(int j = 0; j < 8; j++){
+            printf( "%.2f,", __half2float(input_smem[i]));
+            // }
+          }
+          printf("]\n");
+        // }
+      }
+
     for(int k = 0; k < 2; k++){
       A_frag = input_smem  + threadIdx.y*BN*BC + k*8*BN*BC;
       // B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
@@ -720,18 +747,22 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
           // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
           // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
           //    printf("AA %d, %d, %d \n", k, mii, k *(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0);
+
+        //   if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+        // // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.y == 0){
+        //     half* s = (half *)(&FragA[k * BN / wmmaM * 4 + mii * 4]);
+        //     half* t = (half *)FragB;
+        //     float *w = (float *)(&Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 0]);
+        //     printf("%d, %d, %d [", iter, k, mii);
+        //     for(int i=0; i<8; i++){
+        //       printf("(%.2f, %.2f)", __half2float(s[i]), __half2float(t[i]));    
+        //       // printf("(%.2f)", w[i]);    
+        //     }
+        //     printf("]\n");   
+        //   }
       }
       
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.y == 0){
-      //   printf("%d, %d, %d [", iter, k, threadIdx.x);
-      //   // for(int t=0; t<Accum[0].num_elements; t++)
-      //     //  printf("(%f,%f)", Accum[0].x[t],Accum[4].x[t]); 
-      //   for(int t=0; t<FragB.num_elements; t++)
-      //      printf("%f, ", __half2float(FragB.x[t]));    
-      //     //  printf("%f", __half2float(FragA[0].x[t]), __half2float(FragA[1].x[t]));    
-      //   printf("]\n");   
-      // }
+     
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
       //   // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
       //   printf("iter, k: %d, %d \n ",iter, k);
@@ -831,7 +862,7 @@ cudaError_t convolutionForward_32Tx64x8(half *k, int in_h, int in_w, half *w, in
   // we let X*Y = 32 and arbitraraly pick X = 4 and Y = 8
   // Winograd_kernel<<<dim3(1, tiles_2d_dim, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C, 
   Winograd_kernel<<<dim3((tiles_dim_w+X-1)/X, (tiles_dim_h+Y-1)/Y, filt_k/BK), dim3(BN, 8), smem_size>>>(k, Ww, C,
-  tiles_dim_w, tiles_dim_h, in_c, in_h, in_w, tile_size, X, Y, filt_k, filt_c, out_c, tile_2d_s, out_h, out_w);
+  tiles_dim_w, tiles_dim_h, in_c, in_h, in_w, tile_size, X, Y, filt_k, filt_c, out_c, out_h, out_w);
 
   return cudaGetLastError();
 }

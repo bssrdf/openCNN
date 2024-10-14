@@ -124,7 +124,7 @@ __device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim_w, int
   return mask;
 }
 
-__device__ __forceinline__ void store_output_tile(float *frag, unsigned char* shared_mem, float *C, 
+__device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* shared_mem, float *C, 
                        int out_h, int out_w, int tiles_dim_w, int tiles_dim_h,  int tw, int th){
   
   float *output_smem = (float *) shared_mem;
@@ -137,17 +137,18 @@ __device__ __forceinline__ void store_output_tile(float *frag, unsigned char* sh
   float2 C_tile[16]; 
   float2 At[16]; 
 
-  int idd1 = threadIdx.x;
-  int id1 = (idd1 % tw) * 2 + (idd1 / tw) * out_w * 2;
+  int warpid = threadIdx.y;
+  int laneid = threadIdx.x;
+  unsigned short mask1 = get_mask(laneid, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
+  int id1 = (laneid % tw) * 2 + (laneid / tw) * out_w * 2;
   // int idd2 = threadIdx.x;
   // int id2 = (idd2 % tw) * 2 + (idd2 / tw) * out_w * 2;
 
   // unsigned short mask1 = 0x000F;
-  unsigned short mask1 = get_mask(idd1, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
+  
   // unsigned short mask2 = get_mask(idd2, tiles_dim_w, tiles_dim_h, tw, th, out_w, out_h);
   
-  int warpid = threadIdx.y;
-  int laneid = threadIdx.x;
+  
   // output transpose step
   // int t=0;
   // int acumm1, acumm2;
@@ -206,6 +207,8 @@ __device__ __forceinline__ void store_output_tile(float *frag, unsigned char* sh
 
   // int target = 16;  
 
+  float *ptr;
+
   #pragma unroll                                  
   for(int round=0; round<4; round++){
 
@@ -213,16 +216,61 @@ __device__ __forceinline__ void store_output_tile(float *frag, unsigned char* sh
     // 32T is divided into 2x16(T)
     // each thread needs to write 8 floats into smem.
 
-    float *ptr =  &output_smem[warpid*BN*wmmaM];
+    // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
+    for(int k=0; k<2; k++){
+      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[round*8+k*2+0];
+      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[round*8+k*2+4];
+      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[round*8+k*2+1];
+      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[round*8+k*2+5];
+    }
+    // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
+    for(int k=0; k<2; k++){
+      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN+round*8+k*2+0];
+      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN+round*8+k*2+4];
+      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN+round*8+k*2+1];
+      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN+round*8+k*2+5];
+    }
+
+    for(int k=0; k<2; k++){
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+0];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+4];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+1];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+5];
+    }
+
+    for(int k=0; k<2; k++){
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+0];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+4];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+1];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+5];
+    }
+
+    // float *ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + access_f_s[0][laneid]];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
     
-    ptr = &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
+    // ptr = &output_smem[warpid*BN*wmmaM + 1 16*access_f_f[0][laneid] + access_f_s[0][laneid]];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
     
-    ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
+    // ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_row_major);
     
-    ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
+    // ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
     
  
@@ -265,18 +313,18 @@ __device__ __forceinline__ void store_output_tile(float *frag, unsigned char* sh
     // int id2 = tileid[1][l];
 
 
-    // int tx = 0, ty=0; 
-    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-    //   printf("round, %d, [", round);
+    int tx = 0, ty=0; 
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+      printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
-      //   printf("(%d, %.0f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
-      // }
+      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
+        printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
+      }
     }
-    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-    //   printf("]\n");   
+    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+      printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);
