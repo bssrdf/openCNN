@@ -317,17 +317,17 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     // int id2 = tileid[1][l];
 
 
-    int tx = 0, ty=0; 
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    int tx = 28, ty=0; 
+    if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
       printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
+      if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
         printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
       }
     }
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
       printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){

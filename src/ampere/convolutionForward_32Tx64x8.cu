@@ -406,12 +406,8 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     int ty = threadIdx.y;
     half *fragA = (half *)frag;    
     for (int i = 0; i < 2; ++i){        
-      for (int k = 0; k < 2; ++k){      
-        //                      | tile element  |   |   channel          |  |     super tile      |
-        // fragA[i*8+k*4+0] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
-        // fragA[i*8+k*4+1] = smem[(ki*8+ty)*(BN*BC) + BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
-        // fragA[i*8+k*4+2] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
-        // fragA[i*8+k*4+3] = smem[(ki*8+ty)*(BN*BC) + BN*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
+      for (int k = 0; k < 2; ++k){              
+        //                      |   channel          |   |     super tile      |
         fragA[i*8+k*4+0] = smem[BN*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+1] = smem[BN*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+2] = smem[BN*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
