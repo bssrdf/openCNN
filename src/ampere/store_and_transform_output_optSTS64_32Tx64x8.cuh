@@ -276,12 +276,16 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
  
     __syncthreads();
 
-  if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
-    printf("round, %d, [", round);
-    for(int i = 0; i < 4*16*32; ++i)
-      printf(" %.0f, ", output_smem[i]);
-    printf("]\n");   
-  }
+  // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+  //   printf("round, %d, [", round);
+  //   for(int i = 0; i < 4 ; ++i){
+  //     printf("[");
+  //     for(int j = 0; j < 16*32; ++j)
+  //         printf(" %.0f, ", output_smem[i*16*32+j]);
+  //     printf("],");
+  //   }
+  //   printf("]\n");   
+  // }
 
     // for output transformation, the role of threadIdx.y changes again:
     // in the main loop, different threadIdx.y deal with different element of the 4x4 tile 
