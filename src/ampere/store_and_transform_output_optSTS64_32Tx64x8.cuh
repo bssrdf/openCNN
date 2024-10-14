@@ -124,8 +124,8 @@ __device__ __forceinline__ unsigned short get_mask(int idd, int tiles_dim_w, int
   return mask;
 }
 
-__device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda::wmma::accumulator, wmmaM, wmmaN, wmmaK, float> *frag, 
-       unsigned char* shared_mem, float *C, int out_h, int out_w, int tiles_dim_w, int tiles_dim_h,  int tw, int th){
+__device__ __forceinline__ void store_output_tile(float *frag, unsigned char* shared_mem, float *C, 
+                       int out_h, int out_w, int tiles_dim_w, int tiles_dim_h,  int tw, int th){
   
   float *output_smem = (float *) shared_mem;
   // float2 *accumulator = (float2 *) acumm_smem;
@@ -209,21 +209,22 @@ __device__ __forceinline__ void store_output_tile(nvcuda::wmma::fragment<nvcuda:
   #pragma unroll                                  
   for(int round=0; round<4; round++){
 
-    // each warp stores 4 of its accum frag; for 4 rounds all 16 frags are done
-
+    // each round will output 16(E)x32(T)x16(K)
+    // 32T is divided into 2x16(T)
+    // each thread needs to write 8 floats into smem.
 
     float *ptr =  &output_smem[warpid*BN*wmmaM];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
-      // nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_col_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
+    
     ptr = &output_smem[warpid*BN*wmmaM+wmmaM*wmmaN];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
-    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_col_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+4], 16, nvcuda::wmma::mem_row_major); // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
+    
     ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_row_major);
-    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_col_major);
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+8], 16, nvcuda::wmma::mem_row_major);
+    
     ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
-    nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
-    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_col_major);    
+    // nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
+    
  
     __syncthreads();
 
