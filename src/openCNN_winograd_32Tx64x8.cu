@@ -464,8 +464,8 @@ int main(int argc, char *argv[]) {
         pad_h, pad_w, str_h, str_w, dil_h, dil_w,
         CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));  //CUDNN_CONVOLUTION
 
-  // CUDNN_CALL(cudnnSetConvolutionMathType(
-  //   conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
+  CUDNN_CALL(cudnnSetConvolutionMathType(
+    conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
     
   
   
@@ -488,9 +488,9 @@ int main(int argc, char *argv[]) {
   // =================== Query convolution forward algorithm =================== //
   // cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
-  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
+  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
-  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_GEMM;
 
   // =================== Query workspace and allocate =================== //

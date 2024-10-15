@@ -293,8 +293,8 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   
   int tx = threadIdx.x;
   int ty = threadIdx.y;
-  int tid = ty*32+tx;
-  int cid = (tid % 128) / 8;   
+  // int tid = ty*32+tx;
+  int cid = ((ty*32+tx) % 128) / 8;   
   int kid = tx % 8;
   // tx = tx % 16;
   // int eid = (tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
@@ -550,7 +550,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
   extern __shared__ unsigned char shared_mem[];
   half *input_smem  = reinterpret_cast<half *>(shared_mem);
-  half *filter_smem = input_smem + 16*BC*BN;
+  // half *filter_smem = input_smem + 16*BC*BN;
 
   unsigned short m = 0xFFFF;
   // if((blockIdx.y/tiles_dim)==0)   m&=0xFFF0;
@@ -596,7 +596,8 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   half *A_frag; // Input data pointer
 
   // half *B_frag; // Filter data pointer  
-  half *B_frag1 =  filter_smem;
+  // half *B_frag1 =  filter_smem;
+  half *B_frag1 = input_smem + 16*BC*BN;
   half *B_frag2 =  B_frag1 + 4*BC*BK;  // 16*BC*BK/4 = 4*BC*BK
   half *B_frag3 =  B_frag2 + 4*BC*BK;
   half *B_frag4 =  B_frag3 + 4*BC*BK;
@@ -615,8 +616,8 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   //   }
   // }
 
-  unsigned int FragA[2 * BN / wmmaM * 4];      //  4 int32 = 8 half
-  // unsigned int *FragA = (unsigned int *)img_tile;      //  4 int32 = 8 half
+  // unsigned int FragA[2 * BN / wmmaM * 4];      //  4 int32 = 8 half
+  unsigned int *FragA = (unsigned int *)img_tile;      //  4 int32 = 8 half
   unsigned int FragB[4];      // 4 int32 = 8 half
   float Accum[2 * BN / wmmaM * BK / wmmaN * 8] = {0.0}; // [4, 2, 8]
 
