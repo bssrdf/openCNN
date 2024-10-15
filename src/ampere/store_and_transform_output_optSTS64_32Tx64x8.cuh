@@ -205,7 +205,7 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
   // }    
 
 
-  // int target = 16;  
+ int target = 2112;  
 
   float *ptr;
 
@@ -220,12 +220,24 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     for(int k=0; k<2; k++){
       ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
       ptr[0] = Accum[round*8+k*2+0];
+      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+      // if( (warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+      //      printf("A (%d, %d, %d) \n ", k, warpid, laneid);
       ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
       ptr[0] = Accum[round*8+k*2+4];
+      // if( (warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+          //  printf("B (%d, %d, %d, %d, %d, %f) \n ", k, warpid, laneid, access_f_f[1][laneid], access_f_s[0][laneid], ptr[0]);
       ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
       ptr[0] = Accum[round*8+k*2+1];
+      // if( (warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+          //  printf("C (%d, %d, %d) \n ", k, warpid, laneid);
       ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
       ptr[0] = Accum[round*8+k*2+5];
+      // if( (warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
+          //  printf("D (%d, %d, %d) \n ", k, warpid, laneid);
     }
     // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
     for(int k=0; k<2; k++){
@@ -261,6 +273,13 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+5];
     }
 
+  // if( blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 && warpid == 4 and laneid==16) {
+  //   printf("[");
+  //    for(int k=0; k < 64; k++)
+  //     printf("%f, ", Accum[k]);
+  //   printf("]\n");  
+  // }
+
     // float *ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + access_f_s[0][laneid]];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+0], 16, nvcuda::wmma::mem_row_major); // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
     
@@ -272,20 +291,28 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     
     // ptr = &output_smem[8*BN*wmmaM+warpid*BN*wmmaM+wmmaM*wmmaN];
     // nvcuda::wmma::store_matrix_sync(ptr, frag[round+12], 16, nvcuda::wmma::mem_row_major);    
+
+    
     
  
     __syncthreads();
 
   // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
-  //   printf("round, %d, [", round);
-  //   for(int i = 0; i < 4 ; ++i){
-  //     printf("[");
-  //     for(int j = 0; j < 16*32; ++j)
-  //         printf(" %.0f, ", output_smem[i*16*32+j]);
-  //     printf("],");
+  //   // printf("round, %d, [", round);
+  //   for(int i = 0; i < 16 ; ++i){
+  //     printf("%d, [",i);
+  //     // int i = 12;
+  //     // printf("[");      
+  //     for(int j = 0; j < 16*32; ++j){
+  //       // if(fabs(output_smem[i*16*32+j]-(-120.0f)) < 1.e-3) 
+  //          printf(" %.0f, ", output_smem[i*16*32+j]);
+  //         //  printf(" %d, ", j);
+  //     }
+  //     printf("]\n");
   //   }
-  //   printf("]\n");   
+  //   // printf("]\n");   
   // }
+
 
     // for output transformation, the role of threadIdx.y changes again:
     // in the main loop, different threadIdx.y deal with different element of the 4x4 tile 
@@ -317,18 +344,18 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     // int id2 = tileid[1][l];
 
 
-    int tx = 28, ty=0; 
-    if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("round, %d, [", round);
+    // int tx = 4, ty=0; 
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
       C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
-        printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
-      }
+      // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
+      //   printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
+      // }
     }
-    if(blockIdx.x == 0 && blockIdx.y == 1 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
-      printf("]\n");   
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
+    //   printf("]\n");   
 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
     //   printf("round, %d, [", round);

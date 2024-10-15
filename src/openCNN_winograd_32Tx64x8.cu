@@ -144,7 +144,7 @@ __global__ void dev_const1(half *px, int n) {
   curand_init(clock64(), tid, 0, &state);
 
   if (tid < n)
-    px[tid] = __float2half(tid % (24*24) + 1.f);
+    px[tid] = __float2half((tid % (32*32) + 1.f)/100.0);
     // px[tid] = k;
 }
 
@@ -191,7 +191,7 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = 0;
+  int kk = -1;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -206,14 +206,14 @@ void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
-              printf("(%.0f, %.0f, %d, %d)", 
+              printf("(%.2f, %.2f, %d, %d)", 
               A[k*len*len*n + i*len*n + j*n + m],
               __half2float(B[m*len*len*channel + k*len*len + i*len + j]), j, i);
               // printf("(%f, %f, %d)", 
               // A[k*len*len*n + i*len*n + j*n + m],
               // __half2float(B[m*len*len*channel + k*len*len + i*len + j]), k);
             }    
-            // if(A[k*len*len*n + i*len*n + j*n + m] <  1.0f)
+            // if(fabs(A[k*len*len*n + i*len*n + j*n + m]-314.75) <  1.e-1f)
             //    printf("error at: %f, %d, %d, %d,\n", A[k*len*len*n + i*len*n + j*n + m], k, i, j);
             if (diff > 1){ //1e-4
               error_cnt++;
@@ -464,8 +464,8 @@ int main(int argc, char *argv[]) {
         pad_h, pad_w, str_h, str_w, dil_h, dil_w,
         CUDNN_CROSS_CORRELATION, CUDNN_DATA_FLOAT));  //CUDNN_CONVOLUTION
 
-  CUDNN_CALL(cudnnSetConvolutionMathType(
-    conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
+  // CUDNN_CALL(cudnnSetConvolutionMathType(
+  //   conv_desc, CUDNN_TENSOR_OP_MATH)); // enable tensor core math
     
   
   
@@ -527,7 +527,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 0;
+  int iterations = 20;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
