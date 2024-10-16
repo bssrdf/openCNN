@@ -191,7 +191,7 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = -1;
+  int kk = 0;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -527,7 +527,7 @@ int main(int argc, char *argv[]) {
   OPENCNN_CALL( cudaEventCreate(&hStop,  CU_EVENT_BLOCKING_SYNC) );
   
   // Loop of executions
-  int iterations = 20;
+  int iterations = 0;
 
   // Performs warmup operation
   OPENCNN_CALL(convolutionForward(in_data_open, in_h, in_w, filt_data_open, out_h,
