@@ -205,7 +205,7 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
   // }    
 
 
- int target = 2112;  
+//  int target = 2112;
 
   float *ptr;
 

@@ -403,7 +403,7 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     // so in each round, successive threads load different channels and avoid conflicts
     // similarly for the otehr 24 threads
     int tx = threadIdx.x;
-    int ty = threadIdx.y;
+    // int ty = threadIdx.y;
     half *fragA = (half *)frag;    
     for (int i = 0; i < 2; ++i){        
       for (int k = 0; k < 2; ++k){              
