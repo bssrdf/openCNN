@@ -837,7 +837,7 @@ cudaError_t convolutionForward_32Tx64x8(half *k, int in_h, int in_w, half *w, in
 
   int tile_2d_s = tile_size*tile_size;
   // int tiles_2d_dim = tiles_dim*tiles_dim;
-  int smem_size = (16*(BN+3)*BC + 16*BC*BK)*2;
+  int smem_size = (16*(BN+PADDING)*BC + 16*BC*BK)*2;
   int X = 4, Y = 8;
   
 
