@@ -47,6 +47,8 @@
 #define K 256 // values: 64,128,256,512
 #define R 3 // values: 3
 
+#define PADDING 3
+
 #define PAD_H 1
 #define PAD_W 1
 #define STR_H 1

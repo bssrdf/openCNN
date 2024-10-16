@@ -113,8 +113,8 @@ extern "C"
 __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *pOutputs){
 
   half workspace[3]; 
-  int c_offset = BC*(BN+1);
-  int c_tensor = threadIdx.x + threadIdx.y*2*(BN+1);
+  int c_offset = BC*(BN+PADDING);
+  int c_tensor = threadIdx.x + threadIdx.y*2*(BN+PADDING);
   int offset = 0;
   for(int k=0; k<2; k++){
     #pragma unroll
@@ -135,7 +135,7 @@ __device__ __forceinline__ void load_and_transform_input_tile(half *Btd, half *p
     //   }
     //   printf("]\n");      
     //  }
-    int offset1 = ((threadIdx.x % 2) ^ k) * (BN+1);
+    int offset1 = ((threadIdx.x % 2) ^ k) * (BN+PADDING);
     #pragma unroll
     for(int i=0; i<4; i++){ // prefetch 1 input tile/thread
       pOutputs[c_tensor+i*c_offset*4 + offset1] = d(Btd, i, 0, offset) - d(Btd, i, 2, offset);  
@@ -408,10 +408,10 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     for (int i = 0; i < 2; ++i){        
       for (int k = 0; k < 2; ++k){              
         //                      |   channel          |   |     super tile      |
-        fragA[i*8+k*4+0] = smem[(BN+1)*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+1] = smem[(BN+1)*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+2] = smem[(BN+1)*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
-        fragA[i*8+k*4+3] = smem[(BN+1)*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+0] = smem[(BN+PADDING)*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+1] = smem[(BN+PADDING)*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+2] = smem[(BN+PADDING)*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
+        fragA[i*8+k*4+3] = smem[(BN+PADDING)*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
         // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 1){            
         //     printf("%d, %d, [", i, k);
         //     for(int l=0; l<4; l++){
@@ -597,7 +597,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
   // half *B_frag; // Filter data pointer  
   // half *B_frag1 =  filter_smem;
-  half *B_frag1 = input_smem + 16*BC*(BN+1);
+  half *B_frag1 = input_smem + 16*BC*(BN+PADDING);
   half *B_frag2 =  B_frag1 + 4*BC*BK;  // 16*BC*BK/4 = 4*BC*BK
   half *B_frag3 =  B_frag2 + 4*BC*BK;
   half *B_frag4 =  B_frag3 + 4*BC*BK;
@@ -699,7 +699,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     //   }
 
     for(int k = 0; k < 2; k++){
-      A_frag = input_smem  + threadIdx.y*(BN+1)*BC + k*8*(BN+1)*BC;
+      A_frag = input_smem  + threadIdx.y*(BN+PADDING)*BC + k*8*(BN+PADDING)*BC;
       // B_frag = filter_smem + threadIdx.y*BC*BK + k*8*BC*BK;
       
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
@@ -837,7 +837,7 @@ cudaError_t convolutionForward_32Tx64x8(half *k, int in_h, int in_w, half *w, in
 
   int tile_2d_s = tile_size*tile_size;
   // int tiles_2d_dim = tiles_dim*tiles_dim;
-  int smem_size = (16*(BN+1)*BC + 16*BC*BK)*2;
+  int smem_size = (16*(BN+3)*BC + 16*BC*BK)*2;
   int X = 4, Y = 8;
   
 
