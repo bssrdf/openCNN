@@ -338,11 +338,19 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   // int kid = tx % 8;
   // tx = tx % 16;
   // int eid = (tx / 4) * (filt_k<<2) + (tx % 4) * filt_k;  
+
+
+   // swizzling, but not necessary here
+  // int c = tx % 8;
+  // int s = tx / 8;
+  // int row =  (c & 1) | ((c >> 1) & 2);
+  // int bank = ((c << 1) & 4) | s ^ row;
   
   for(int k = 0; k < 2; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
     // load 8 tile elements, each ty loads 16Kx16C 
     // each tx loads 8 halfs (16 bytes)
     void *ptr = (void *)(smem + k*8*(BC*16) + ty*(BC*16) + tx * 8);
+    // void *ptr = (void *)(smem + k*8*(BC*16) + ty*(BC*16) + (row * 8 + bank) * 8);
     unsigned int smem_ptr;
 
     asm("{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 "
