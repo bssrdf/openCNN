@@ -404,6 +404,7 @@ int main(int argc, char *argv[]) {
   // =================== openCNN layouts =================== //    
   cudaMemcpyToSymbol(access_f_s, aux, 64*sizeof(int));
   cudaMemcpyToSymbol(access_s, aux2, 64*sizeof(int));
+  cudaMemcpyToSymbol(access_t, aux3, 64*sizeof(int));
   cudaMemcpyToSymbol(access_f_f, aux1, 64*sizeof(int));
   // cudaMemcpyToSymbol(laneid, lid, 138*sizeof(int)); // no need for it now
   // cudaMemcpyToSymbol(tileid, tid, 64*sizeof(int));

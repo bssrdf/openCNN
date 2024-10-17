@@ -510,9 +510,11 @@ __device__ void loadFragB(unsigned int *frag, half *smem, int ki)
       // fragB[k*4+2] = smem[(ki*8+ty)*(BC*BC) + BC*(access_s[0][tx]+8) + tx / 4 + k * 8];
       // fragB[k*4+3] = smem[(ki*8+ty)*(BC*BC) + BC*(access_s[1][tx]+8) + tx / 4 + k * 8];
       //                                             | tile element  |   |        K          |   | channel   |
-      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2    );
+      // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2    );
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  access_t[0][tx] );
       frag[k*2+0] = ptr[0];
-      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2 + 8);
+      // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2 + 8);
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  access_t[1][tx]);
       frag[k*2+1] = ptr[0];
     }
 }
