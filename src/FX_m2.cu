@@ -89,7 +89,7 @@ __device__ half f_row1(half *Gw, int j){
       }
   
       c_kernel   += blockDim.x;
-      c_kernel_s += blockDim.x;
+      c_kernel_s += blockDim.x*c_glb_offset_s;
     }
   }
 

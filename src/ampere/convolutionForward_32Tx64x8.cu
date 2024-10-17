@@ -802,19 +802,19 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
       }     
     }
 
-    if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
-          // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
-          printf("iter: %d \n ",iter);
-          for(int j=0; j < 16; j++){
-            printf("[");
-            for(int i = 0; i < 256; i++){          
-              // for(int j = 0; j < 8; j++){
-              printf( "%.2f,", __half2float(B_frag1[j*256+i]));
-              // }
-            }
-            printf("]\n");
-          }
-        }
+    // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0){
+    //       // printf("A %d, %d, %f, %f, %f \n", iter, i, input_frag[1], input_frag[0], accumulator[1][0]);
+    //       printf("iter: %d \n ",iter);
+    //       for(int j=0; j < 16; j++){
+    //         printf("[");
+    //         for(int i = 0; i < 256; i++){          
+    //           // for(int j = 0; j < 8; j++){
+    //           printf( "%.2f,", __half2float(B_frag1[j*256+i]));
+    //           // }
+    //         }
+    //         printf("]\n");
+    //       }
+    //     }
 
     // __syncthreads();
     asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
