@@ -218,58 +218,50 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
 
     // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
     for(int k=0; k<2; k++){
-      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ access_f_f[0][laneid])];
       ptr[0] = Accum[round*8+k*2+0];
-      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-      // if( (warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-      //      printf("A (%d, %d, %d) \n ", k, warpid, laneid);
-      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ access_f_f[1][laneid])];
       ptr[0] = Accum[round*8+k*2+4];
-      // if( (warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-          //  printf("B (%d, %d, %d, %d, %d, %f) \n ", k, warpid, laneid, access_f_f[1][laneid], access_f_s[0][laneid], ptr[0]);
-      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ access_f_f[0][laneid])];
       ptr[0] = Accum[round*8+k*2+1];
-      // if( (warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-          //  printf("C (%d, %d, %d) \n ", k, warpid, laneid);
-      ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ access_f_f[1][laneid])];
       ptr[0] = Accum[round*8+k*2+5];
-      // if( (warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]) == target && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-      // if(fabs(ptr[0]-(51.171815f)) < 1.e-3 && blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && round ==0 ) 
-          //  printf("D (%d, %d, %d) \n ", k, warpid, laneid);
-    }
+      
+    // }
     // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
-    for(int k=0; k<2; k++){
-      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+    // for(int k=0; k<2; k++){
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ (access_f_f[0][laneid]+16))];
       ptr[0] = Accum[BN+round*8+k*2+0];
-      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ (access_f_f[1][laneid]+16))];
       ptr[0] = Accum[BN+round*8+k*2+4];
-      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ (access_f_f[0][laneid]+16))];
       ptr[0] = Accum[BN+round*8+k*2+1];
-      ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ (access_f_f[1][laneid]+16))];
       ptr[0] = Accum[BN+round*8+k*2+5];
     }
 
     for(int k=0; k<2; k++){
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ access_f_f[0][laneid])];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+0];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ access_f_f[1][laneid])];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+4];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ access_f_f[0][laneid])];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+1];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ access_f_f[1][laneid])];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + round*8+k*2+5];
-    }
+    // }
 
-    for(int k=0; k<2; k++){
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
+    // for(int k=0; k<2; k++){
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ (access_f_f[0][laneid]+16))];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+0];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[0][laneid])*BN + ((k*8 + access_f_s[0][laneid]) ^ (access_f_f[1][laneid]+16))];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+4];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ (access_f_f[0][laneid]+16))];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+1];
-      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[1][laneid]];
+      ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + (k*8 + access_f_s[1][laneid])*BN + ((k*8 + access_f_s[1][laneid]) ^ (access_f_f[1][laneid]+16))];
       ptr[0] = Accum[BN/wmmaM*BK/wmmaN*8 + BN+round*8+k*2+5];
     }
 
@@ -314,42 +306,14 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
   // }
 
 
-    // for output transformation, the role of threadIdx.y changes again:
-    // in the main loop, different threadIdx.y deal with different element of the 4x4 tile 
-    // here, they are for 4 different groups of lane ids from optSTS64 layout
-    // for init (and init+32), we need to identify its tile number (0-31) within the supertile     
-    // first, from init, find out from which threadIdx.x it comes.
-    // int idy = init - threadIdx.x;
-    // if(idy > 204) idy -= BN_p*16*2; 
-    // int idx = idy + threadIdx.x;
-    // if(idx % 2 == 0)
-    //     idx = idx / 2;
-    // else
-    //     idx = (idx-1) / 2;
-    // int l = laneid[idx];
-    // now we got l, which is the land id which computed accumulated sum for the tile element 
-    // each lane id (or threadIdx.x) computed 8 tiles which are distributed into 4 locations spreading
-    // over the smem. We need to find which of the 8 the current tile is.   
-    // use tileid table to figure out
-    // int id1 = tileid[0][l];
-
-
-    // for 2nd tile
-    // idx = idy + threadIdx.x + 32;
-    // if(idx % 2 == 0)
-    //     idx = idx / 2;
-    // else
-    //     idx = (idx-1) / 2;
-    // l = laneid[idx];
-    // int id2 = tileid[1][l];
-
+  
 
     // int tx = 4, ty=0; 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
     //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
-      C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
-      C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
+      C_tile[i].x = output_smem[i*offset + warpid*BN + (warpid ^ laneid)];
+      C_tile[i].y = output_smem[i*offset + (warpid + 8)*BN + ((warpid + 8) ^ laneid)];      
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
       //   printf("(%d, %f),", i*offset+ laneid*16 + warpid, C_tile[i].x);
       // }
