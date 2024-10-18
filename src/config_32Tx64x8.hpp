@@ -62,6 +62,8 @@ __constant__ int access_f_s[2][32];
 __constant__ int access_f_f[2][32];
 __constant__ int access_s[2][32];
 __constant__ int access_t[2][32];
+__constant__ int access_o[2][2];
+__constant__ int access_p[2];
 // __constant__ int laneid[138];
 // __constant__ int tileid[2][32];
 
@@ -108,7 +110,9 @@ const int aux3[2][32] = {
                           8,10,12,14,8,10,12,14,
                           0,2,4,6,0,2,4,6,
                           0,2,4,6,0,2,4,6}                          
-                        };        
+                        };       
+const int aux_offset[2][2] = {{0, 4}, {16, 20}}; 
+const int aux_offset1[2] = {0, BN_p}; 
 
 const int lid[138] = {0, 1, 16, 17, 0, 1, 16, 17, 8, 9, 24, 25, 8, 9, 24, 25, 0, 1, 
 16, 17, 0, 1, 16, 17, 8, 9, 24, 25, 8, 9, 24, 25, -1, -1, 2, 3, 18, 19, 2, 3, 18, 19, 
