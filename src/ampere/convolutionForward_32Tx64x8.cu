@@ -459,6 +459,10 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
       for (int k = 0; k < 2; ++k){              
         //                      |   channel          |   |     super tile      |
         fragA[i*8+k*4+0] = smem[(BN+PADDING)*access_s[0][tx]     + tx / 4 + k * 8 + i*16];
+        // if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x < 32 && threadIdx.y == 0) {
+        //     const auto index = (BN+PADDING)*access_s[0][tx]     + tx / 4 + k * 8 + i*16;
+        //     printf("tx[%2d]: %3d bank:%2d offset:%d, i = %d, k = %d\n", threadIdx.x, index, (index/2)%32, index/2/32, i, k);
+        // }
         fragA[i*8+k*4+1] = smem[(BN+PADDING)*access_s[1][tx]     + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+2] = smem[(BN+PADDING)*(access_s[0][tx]+8) + tx / 4 + k * 8 + i*16];
         fragA[i*8+k*4+3] = smem[(BN+PADDING)*(access_s[1][tx]+8) + tx / 4 + k * 8 + i*16];
