@@ -383,7 +383,7 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     // int id2 = tileid[1][l];
 
 
-    // int tx = 0, ty=4; 
+    // int tx = 0, ty=0; 
     // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx  && threadIdx.y == ty)      
     //   printf("round, %d, [", round);
     for(int i=0; i<16; i++){
