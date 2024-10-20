@@ -58,8 +58,9 @@ __device__ half f_row1(half *Gw, int j){
   
     int c_glb_offset = filt_k*filt_h*filt_w;
     int c_kernel = TileY*BC*c_glb_offset + TileX*BK + Iny*c_glb_offset + Inx;
-    int c_glb_offset_s = filt_c*4*4;
-    int c_kernel_s = TileY*BC + TileX*BK*c_glb_offset_s + Iny + Inx * c_glb_offset_s;
+    // int c_glb_offset_s = filt_c*4*4;
+    int c_glb_offset_s = filt_c*filt_k;
+    int c_kernel_s = TileY*BC + TileX*BK*filt_c + Iny + Inx * filt_c;
   
     half Gw[21]; //9+12. In registers
     half *Gw_buffer = Gw+9;
@@ -84,12 +85,12 @@ __device__ half f_row1(half *Gw, int j){
       for(int i=0; i<4; i++){
         aux = i*3; aux2 = i<<2;
         for(int j=0; j<4; j++){
-          pOutputs[c_kernel_s+aux2*filt_c+j*filt_c] = (*func2[j])(Gw_buffer, aux);
+          pOutputs[c_kernel_s+aux2*c_glb_offset_s+j*c_glb_offset_s] = (*func2[j])(Gw_buffer, aux);
         }
       }
   
       c_kernel   += blockDim.x;
-      c_kernel_s += blockDim.x*c_glb_offset_s;
+      c_kernel_s += blockDim.x*filt_c;
     }
   }
 
