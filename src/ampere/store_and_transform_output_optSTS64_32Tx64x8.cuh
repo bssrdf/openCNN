@@ -175,11 +175,14 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
   int acumm2 = acumm1+4;
                        
   // int acumm4 = BN_p*16 ; //*4
-  int idx  = threadIdx.y * BN_p;
-  int idx2 = idx + BN_p*8; //(BN_p*2 *8)/2
+  // int idx  = threadIdx.y * BN_p;
+  // int idx2 = idx + BN_p*8; //(BN_p*2 *8)/2
 
   // For transformating
   int offset = BN_p*2; //*2/2
+  int offsetp = warpid*BN_p*2; //*2/2
+
+  int idx = BN/wmmaM*BK/wmmaN*4;
   // int init = ( (threadIdx.y/4)*BN_p*16 + (threadIdx.y%4)*(32+2) ) *2 + threadIdx.x;
 
   int c_glb_offset = out_h*out_w;
@@ -224,7 +227,7 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
 
 //  int target = 2112;
 
-  float2 *ptr;
+  // float2 *ptr;
 
   #pragma unroll                                  
   for(int round=0; round<4; round++){
@@ -235,14 +238,18 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
 
     // FA[0]*FB[0],FA[0]*FB[1], FA[0]*FB[2],FA[0]*FB[3] 
     // for(int k=0; k<2; k++){
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + acumm1];
-    *ptr = accumulator[round*4];
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + acumm2];
-    *ptr = accumulator[round*4+1];      
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + acumm1 + 16];
-    *ptr = accumulator[round*4+2];
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + acumm2 + 16];
-    *ptr = accumulator[round*4+3];
+    // ptr =  (float2 *)&output_smem[offsetp + acumm1];
+    // *ptr = accumulator[round*4];
+    // ptr =  (float2 *)&output_smem[offsetp + acumm2];
+    // *ptr = accumulator[round*4+1];      
+    // ptr =  (float2 *)&output_smem[offsetp + acumm1 + 16];
+    // *ptr = accumulator[round*4+2];
+    // ptr =  (float2 *)&output_smem[offsetp + acumm2 + 16];
+    // *ptr = accumulator[round*4+3];
+    *((float2 *)(output_smem + offsetp + acumm1))      = accumulator[round*4+0];
+    *((float2 *)(output_smem + offsetp + acumm2))      = accumulator[round*4+1];
+    *((float2 *)(output_smem + offsetp + acumm1 + 16)) = accumulator[round*4+2];
+    *((float2 *)(output_smem + offsetp + acumm2 + 16)) = accumulator[round*4+3];
       
       // ptr =  &output_smem[warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[1][laneid]];
       // ptr[0] = Accum[round*8+k*2+1];
@@ -252,14 +259,20 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     // }
     // FA[1]*FB[0],FA[1]*FB[1], FA[1]*FB[2],FA[1]*FB[3] 
     // for(int k=0; k<2; k++){
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + BN_p + acumm1];
-    *ptr = accumulator[BK/4+round*4+0];
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + BN_p + acumm2];
-    *ptr = accumulator[BK/4+round*4+1];      
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + BN_p + acumm1 + 16];
-    *ptr = accumulator[BK/4+round*4+2];
-    ptr =  (float2 *)&output_smem[warpid*2*BN_p + BN_p + acumm2 + 16];
-    *ptr = accumulator[BK/4+round*4+3];
+    // ptr =  (float2 *)&output_smem[offsetp + BN_p + acumm1];
+    // *ptr = accumulator[BK/4+round*4+0];
+    // ptr =  (float2 *)&output_smem[offsetp + BN_p + acumm2];
+    // *ptr = accumulator[BK/4+round*4+1];      
+    // ptr =  (float2 *)&output_smem[offsetp + BN_p + acumm1 + 16];
+    // *ptr = accumulator[BK/4+round*4+2];
+    // ptr =  (float2 *)&output_smem[offsetp + BN_p + acumm2 + 16];
+    // *ptr = accumulator[BK/4+round*4+3];
+
+    *((float2 *)(output_smem+offsetp + BN_p + acumm1))      = accumulator[BK/4+round*4+0];
+    *((float2 *)(output_smem+offsetp + BN_p + acumm2))      = accumulator[BK/4+round*4+1];
+    *((float2 *)(output_smem+offsetp + BN_p + acumm1 + 16)) = accumulator[BK/4+round*4+2];
+    *((float2 *)(output_smem+offsetp + BN_p + acumm2 + 16)) = accumulator[BK/4+round*4+3];
+
       // ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
       // ptr[0] = Accum[BN+round*8+k*2+0];
       // ptr =  &output_smem[warpid*BN*wmmaM + wmmaM*wmmaN + 16*access_f_f[1][laneid] + k*8 + access_f_s[0][laneid]];
@@ -270,24 +283,34 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
       // ptr[0] = Accum[BN+round*8+k*2+5];
     // }
 
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + acumm1];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + round*4 + 0];
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + acumm2];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + round*4 + 1];      
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + acumm1 + 16];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + round*4 + 2];
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + acumm2 + 16];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + round*4 + 3];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + acumm1];
+    // *ptr = accumulator[idx + round*4 + 0];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + acumm2];
+    // *ptr = accumulator[idx + round*4 + 1];      
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + acumm1 + 16];
+    // *ptr = accumulator[idx + round*4 + 2];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + acumm2 + 16];
+    // *ptr = accumulator[idx + round*4 + 3];
 
+    *((float2 *)(output_smem+BN_p*16 + offsetp + acumm1))      =  accumulator[idx + round*4 + 0];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + acumm2))      =  accumulator[idx + round*4 + 1];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + acumm1 + 16)) =  accumulator[idx + round*4 + 2];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + acumm2 + 16)) =  accumulator[idx + round*4 + 3];
 
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + BN_p + acumm1];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + BK/4 + round*4 + 0];
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + BN_p + acumm2];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + BK/4 + round*4 + 1];      
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + BN_p + acumm1 + 16];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + BK/4 + round*4 + 2];
-    ptr =  (float2 *)&output_smem[BN_p*16 + warpid*2*BN_p + BN_p + acumm2 + 16];
-    *ptr = accumulator[BN/wmmaM*BK/wmmaN*4 + BK/4 + round*4 + 3];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + BN_p + acumm1];
+    // *ptr = accumulator[idx + BK/4 + round*4 + 0];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + BN_p + acumm2];
+    // *ptr = accumulator[idx + BK/4 + round*4 + 1];      
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + BN_p + acumm1 + 16];
+    // *ptr = accumulator[idx + BK/4 + round*4 + 2];
+    // ptr =  (float2 *)&output_smem[BN_p*16 + offsetp + BN_p + acumm2 + 16];
+    // *ptr = accumulator[idx + BK/4 + round*4 + 3];
+
+    *((float2 *)(output_smem+BN_p*16 + offsetp + BN_p + acumm1))      = accumulator[idx + BK/4 + round*4 + 0];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + BN_p + acumm2))      = accumulator[idx + BK/4 + round*4 + 1];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + BN_p + acumm1 + 16)) = accumulator[idx + BK/4 + round*4 + 2];
+    *((float2 *)(output_smem+BN_p*16 + offsetp + BN_p + acumm2 + 16)) = accumulator[idx + BK/4 + round*4 + 3];
+
 
     // for(int k=0; k<2; k++){
     //   ptr =  &output_smem[8*BN*wmmaM + warpid*BN*wmmaM + 16*access_f_f[0][laneid] + k*8 + access_f_s[0][laneid]];
@@ -389,8 +412,10 @@ __device__ __forceinline__ void store_output_tile(float *Accum, unsigned char* s
     for(int i=0; i<16; i++){
       // C_tile[i].x = output_smem[i*offset + laneid*16 + warpid];
       // C_tile[i].y = output_smem[i*offset + laneid*16 + warpid + 8];
-      ptr =  (float2 *)&output_smem[i*offset + loc(laneid, warpid*2)];
-      C_tile[i] = *ptr;
+      // ptr =  (float2 *)&output_smem[i*offset + loc(laneid, warpid*2)];
+      // C_tile[i] = *ptr;
+      C_tile[i] = output_smem[i*offset + loc(laneid, warpid*2)];
+
       // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == tx && threadIdx.y == ty){
       //   printf("(%d, %f, %f),", i*offset + loc(laneid, warpid*2), C_tile[i].x, C_tile[i].y);
       // }
