@@ -349,7 +349,7 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   // int s = tx / 8;
   // int row =  (c & 1) | ((c >> 1) & 2);
   // int bank = ((c << 1) & 4) | s ^ row;
-  
+  #pragma unroll
   for(int k = 0; k < 2; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
     // load 8 tile elements, each ty loads 16Kx16C 
     // each tx loads 8 halfs (16 bytes)
@@ -454,6 +454,7 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     // half2 *input = (half2 *)smem;
     unsigned int *fragA = frag;
     unsigned int *input = (unsigned int *)smem;
+    #pragma unroll
     for (int i = 0; i < 2; ++i){        
       // for (int k = 0; k < 2; ++k){              
         //                      |   channel          |   |     super tile      |
@@ -508,6 +509,7 @@ __device__ void loadFragB(unsigned int *frag, half *smem, int ki)
     int ty = threadIdx.y;
     // half *fragB = (half *)frag;
     unsigned int * ptr;
+    #pragma unroll
     for (int k = 0; k < 2; ++k){
       //                  | tile element  |   |   channel          |  |       K      |
       // fragB[k*4+0] = smem[(ki*8+ty)*(BC*BC) + BC*access_s[0][tx]     + tx / 4 + k * 8];
