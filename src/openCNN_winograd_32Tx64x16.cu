@@ -31,7 +31,7 @@
 
 #include <cudnn.h>
 
-#include "config_32Tx64x8.hpp"
+#include "config_32Tx64x16.hpp"
 
 #ifdef BASE
   #if __CUDA_ARCH__ < 800
@@ -43,7 +43,7 @@
   // #if __CUDA_ARCH__ < 800
   // #include "convolutionForward_32x64x8.cu"  
   // #else 
-  #include "ampere/convolutionForward_32Tx64x8.cu"
+  #include "ampere/convolutionForward_32Tx64x16.cu"
   // #include "ampere/convolutionForward_40x40x8.cu"
   // #endif
 #endif

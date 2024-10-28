@@ -23,7 +23,7 @@
 #include "../outer_product_ggml.cuh"
 #else
 // #include "store_and_transform_output_optSTS64.cuh"
-#include "store_and_transform_output_optSTS64_32Tx64x8.cuh"
+#include "store_and_transform_output_optSTS64_32Tx64x16.cuh"
 // #include "../outer_product.cuh"
 #endif
 
