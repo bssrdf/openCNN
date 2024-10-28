@@ -448,7 +448,7 @@ __device__ void loadFragA(unsigned int *frag, half *smem, int ki)
     // similarly for the otehr 24 threads
     int tx = threadIdx.x;
     // int ty = threadIdx.y;
-    int c_tensor = (tx%4)*BN + tx / 4 + ((tx/4) % 2 ? 16 : 0);
+    int c_tensor = (tx%4)*BN + tx / 8 + ((tx/4) % 2 ? 16 : 0);
     // half2 *fragA = (half2 *)frag;
     // half2 *input = (half2 *)smem;
     unsigned int *fragA = frag;
