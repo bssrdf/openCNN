@@ -31,7 +31,7 @@
 
 #include <cudnn.h>
 
-#include "config_32Tx64x16.hpp"
+#include "config_32Tx64x8.hpp"
 
 #ifdef BASE
   #if __CUDA_ARCH__ < 800
@@ -43,7 +43,7 @@
   // #if __CUDA_ARCH__ < 800
   // #include "convolutionForward_32x64x8.cu"  
   // #else 
-  #include "ampere/convolutionForward_32Tx64x16.cu"
+  #include "ampere/convolutionForward_32Tx64x8.cu"
   // #include "ampere/convolutionForward_40x40x8.cu"
   // #endif
 #endif
@@ -191,7 +191,7 @@ void print(const float *data, int n, int c, int h, int w) {
 void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
-  int kk = -1;
+  int kk = 0;
   for(k = 0; k < channel; k++){
     for (i = 0; i < len; i++) {
        if(k == kk)
@@ -241,7 +241,7 @@ cudaError_t convolutionForward(half *k, int in_h, int in_w, half *w, int out_h,
                                   int alpha, int m){
   cudaError_t out;
 
-  if(BN==32 && BK==64 && BC==16){
+  if(BN==32 && BK==64 && BC==8){
     out = convolutionForward_32Tx64x8(k, in_h, in_w, w, out_h,
                 out_w, out_c, C, Ww,
                 tiles_dim_w, tiles_dim_h, tile_size, in_c, filt_k, filt_c, filt_h, filt_w, alpha, m);
