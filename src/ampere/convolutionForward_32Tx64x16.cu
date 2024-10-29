@@ -318,19 +318,19 @@ __device__ __forceinline__ void prefetch_filter_tile(const half *pInputs, half *
 }*/
 
 // smem layout for transformed filter weights 
-// ___________16C(K0)______16C(K1)____... _____16C(K15) E0
-// ___________16C(K0)______16C(K1)____... _____16C(K15) E1
+// ___________16C(K0)______16C(K1)____... _____16C(K31) E0
+// ___________16C(K0)______16C(K1)____... _____16C(K31) E1
 // .....
 // .....
-// ___________16C(K0)______16C(K1)____... _____16C(K15) E15
+// ___________16C(K0)______16C(K1)____... _____16C(K31) E15
 // -- B_Frag1
 __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, half *smem, int filt_c, int filt_k, int ko){
 
   int tx = threadIdx.x;
   int ty = threadIdx.y;
   int c_offset = filt_c*filt_k;
-  int c_tensor = blockIdx.z*BK*filt_c + ty*c_offset + (tx/2)*filt_c + (tx%2)*8 + ko * 16 * filt_c; // Iny*filt_k*4*4
-  int c_tensor_s = ty*(BC*16) + tx * 8;
+  int c_tensor = blockIdx.z*BK*filt_c + ty*c_offset + (tx/2)*filt_c + (tx%2)*8 + ko * 32 * filt_c; // Iny*filt_k*4*4
+  int c_tensor_s = ty*(BC*32) + tx * 8;
 
   // each threadIdx.y corresponds to 2 channels; there are 8 different threadIdx.y so 16 channels 
   // each threadx load 16 filters in K 
@@ -353,7 +353,7 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
   for(int k = 0; k < 2; k++){ // each cp.async can load 16 bytes = 8 halfs, we need to load 16 halfs
     // load 8 tile elements, each ty loads 16Kx16C 
     // each tx loads 8 halfs (16 bytes)
-    void *ptr = (void *)(smem + k*8*(BC*16) + c_tensor_s);
+    void *ptr = (void *)(smem + k*8*(BC*32) + c_tensor_s);
     // void *ptr = (void *)(smem + k*8*(BC*16) + ty*(BC*16) + (row * 8 + bank) * 8);
     unsigned int smem_ptr;
 
@@ -364,6 +364,17 @@ __device__ __forceinline__ void prefetch_filter_tile_async(const half *pInputs, 
 
     asm volatile("cp.async.cg.shared.global [%0], [%1], %2;\n" ::"r"(smem_ptr),
                 "l"(&pInputs[c_tensor + k * 8 * c_offset]),
+                "n"(16));
+    
+    ptr = (void *)(smem + k*8*(BC*32) + c_tensor_s + BC*16);    
+
+    asm("{ .reg .u64 smem_ptr; cvta.to.shared.u64 smem_ptr, %1; cvt.u32.u64 "
+        "%0, smem_ptr; }\n"
+        : "=r"(smem_ptr)
+        : "l"(ptr));
+
+    asm volatile("cp.async.cg.shared.global [%0], [%1], %2;\n" ::"r"(smem_ptr),
+                "l"(&pInputs[c_tensor + 16*filt_c + k * 8 * c_offset]),
                 "n"(16));
   }
 }
@@ -518,12 +529,22 @@ __device__ void loadFragB(unsigned int *frag, half *smem, int ki)
       // fragB[k*4+3] = smem[(ki*8+ty)*(BC*BC) + BC*(access_s[1][tx]+8) + tx / 4 + k * 8];
       //                                             | tile element  |   |        K          |   | channel   |
       // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2    );
-      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  access_t[0][tx] );
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BN) + BC * (tx / 4 + k * 8) +  access_t[0][tx] );
       frag[k*2+0] = ptr[0];
       // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2 + 8);
-      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  access_t[1][tx]);
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BN) + BC * (tx / 4 + k * 8) +  access_t[1][tx]);
       frag[k*2+1] = ptr[0];
     }
+    #pragma unroll
+    for (int k = 0; k < 2; ++k){
+      //                                             | tile element  |   |        K          |   | channel   |
+      // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2    );
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BN) + BC*16 + BC * (tx / 4 + k * 8) +  access_t[0][tx] );
+      frag[4+k*2+0] = ptr[0];
+      // ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BC) + BC * (tx / 4 + k * 8) +  (tx%4)*2 + 8);
+      ptr =  reinterpret_cast<unsigned int *>(smem + (ki*8+ty)*(BC*BN) + BC*16 + BC * (tx / 4 + k * 8) +  access_t[1][tx]);
+      frag[4+k*2+1] = ptr[0];
+    }    
 }
 
 
@@ -663,9 +684,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
   // half *B_frag; // Filter data pointer  
   // half *B_frag1 =  filter_smem;
   half *B_frag1 = input_smem + 16*4*(64+PADDING)*2;
-  half *B_frag2 =  B_frag1 + 4*BC*BK;  // 16*BC*BK/4 = 4*BC*BK
-  half *B_frag3 =  B_frag2 + 4*BC*BK;
-  half *B_frag4 =  B_frag3 + 4*BC*BK;
+  half *B_frag2 =  B_frag1 + 16*BC*BK/2;  // 16*BC*BK/4 = 4*BC*BK
 
 
 
@@ -683,16 +702,16 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
 
   // unsigned int FragA[2 * BN / wmmaM * 4];      //  4 int32 = 8 half
   unsigned int *FragA = (unsigned int *)img_tile;      //  4 int32 = 8 half
-  unsigned int FragB[4];      // 4 int32 = 8 half
+  unsigned int FragB[2 * BN / wmmaN * 4];      // 4 int32 = 8 half
   float Accum[2 * BN / wmmaM * BK / wmmaN * 8] = {0.0}; // [4, 2, 8]
 
   prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
   prefetch_filter_tile_async(B, B_frag1, filt_c, filt_k, 0);  
   asm volatile("cp.async.commit_group;\n" ::);
-  prefetch_filter_tile_async(B, B_frag2, filt_c, filt_k, 1);  
-  asm volatile("cp.async.commit_group;\n" ::);
-  prefetch_filter_tile_async(B, B_frag3, filt_c, filt_k, 2);  
-  asm volatile("cp.async.commit_group;\n" ::);
+  // prefetch_filter_tile_async(B, B_frag2, filt_c, filt_k, 1);  
+  // asm volatile("cp.async.commit_group;\n" ::);
+  // prefetch_filter_tile_async(B, B_frag3, filt_c, filt_k, 2);  
+  // asm volatile("cp.async.commit_group;\n" ::);
   // int ko = 0;
   
   // prefetch_filter_tile(B, filter_tile, filt_k);
@@ -785,19 +804,24 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     }
   
 
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(0));
     __syncthreads();   
     // now both input and filter tiles are in smem, we can load wmma frags and do wmma computation  
     // if(iter<(in_c-BC)){ // ???should there be a if here
-      prefetch_filter_tile_async(B, B_frag4, filt_c, filt_k, 3);  
+      prefetch_filter_tile_async(B, B_frag2, filt_c, filt_k, 1);  
       asm volatile("cp.async.commit_group;\n" ::);
     // }
 
     for(int k = 0; k < 2; k++){
-      loadFragB(FragB, B_frag1, k);
+      loadFragB(FragB + k * BN / wmmaN * 4, B_frag1, k);
+    }
+    
+    for(int k = 0; k < 2; k++){  
       for(int mii = 0; mii < BN / wmmaM; mii++){
+        for(int nii = 0; nii < BN / wmmaN; nii++){
             // 16x16x16 for each wmma
-             mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 0]);
+             mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], &FragB[k * BN / wmmaN * 4 + nii * 4], &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + nii * 8]);
+        }
           //   mmaSync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0],
           // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 0]);
           // if(blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0)
@@ -835,7 +859,7 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     //     }
 
     // __syncthreads();
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+    asm volatile("cp.async.wait_group %0;\n" ::"n"(0));
     __syncthreads();   
 
     B += BC; 
@@ -844,44 +868,17 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     asm volatile("cp.async.commit_group;\n" ::);
 
     for(int k = 0; k < 2; k++){
-      loadFragB(FragB, B_frag2, k);
+      loadFragB(FragB + k * BN / wmmaN * 4, B_frag2, k);
+    }
+    for(int k = 0; k < 2; k++){
       for(int mii = 0; mii < BN / wmmaM; mii++){
+        for(int nii = 0; nii < BN / wmmaN; nii++){
             // 16x16x16 for each wmma
-            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 8]);
+            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], &FragB[k * BN / wmmaN * 4 + nii * 4], &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + nii * 8 + 16]);
+        }
+            // mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 8]);
           //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1],
           // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 1]);
-      }     
-    }
-
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
-    __syncthreads();   
-    
-    prefetch_filter_tile_async(B, B_frag2, filt_c, filt_k, 1);  
-    asm volatile("cp.async.commit_group;\n" ::);
-
-    for(int k = 0; k < 2; k++){
-      loadFragB(FragB, B_frag3, k);
-      for(int mii = 0; mii < BN / wmmaM; mii++){     
-            // 16x16x16 for each wmma
-            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 16]);
-          //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2],
-          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 2]);
-      }     
-    }
-
-    asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
-    __syncthreads();   
-    
-    prefetch_filter_tile_async(B, B_frag3, filt_c, filt_k, 2);  
-    asm volatile("cp.async.commit_group;\n" ::);
-
-    for(int k = 0; k < 2; k++){
-      loadFragB(FragB, B_frag4, k);
-      for(int mii = 0; mii < BN / wmmaM; mii++){
-            // 16x16x16 for each wmma
-            mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 24]);
-          //   nvcuda::wmma::mma_sync(Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3],
-          // FragA[k * BN / wmmaM + mii], FragB, Accum[k*(BN / wmmaM * BK / wmmaN) + mii * (BK / wmmaN) + 3]);
       }     
     }
     
@@ -892,10 +889,6 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     // if(iter<(in_c-BC)){
     prefetch_input_tile(A, img_tile, in_h, in_w, X, Y, m);
       // prefetch_filter_tile(B, filter_tile, filt_k);
-      
-      
-     
-    // }
 
     __syncthreads();
   }
@@ -910,52 +903,44 @@ __global__ void Winograd_kernel(half *A, half *B, float *C,
     loadFragA(FragA + k * BN / wmmaM * 4, A_frag, k);
   }
 
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
+  asm volatile("cp.async.wait_group %0;\n" ::"n"(0));
   __syncthreads();   
     
-  prefetch_filter_tile_async(B, B_frag4, filt_c, filt_k, 3);  
+  prefetch_filter_tile_async(B, B_frag2, filt_c, filt_k, 1);  
   asm volatile("cp.async.commit_group;\n" ::);  
-
-  for(int k = 0; k < 2; k++){
-    loadFragB(FragB, B_frag1, k);
-    for(int mii = 0; mii < BN / wmmaM; mii++){
-          // 16x16x16 for each wmma
-        mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 0]);
-    }     
-  }
-
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(2));
-  __syncthreads();   
-
-  for(int k = 0; k < 2; k++){
-    loadFragB(FragB, B_frag2, k);
-    for(int mii = 0; mii < BN / wmmaM; mii++){
-          // 16x16x16 for each wmma
-        mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 8]);
-    }     
-  }
-
-  asm volatile("cp.async.wait_group %0;\n" ::"n"(1));
-  __syncthreads();   
   
   for(int k = 0; k < 2; k++){
-    loadFragB(FragB, B_frag3, k);
-    for(int mii = 0; mii < BN / wmmaM; mii++){     
-        // 16x16x16 for each wmma
-        mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 16]);
+    loadFragB(FragB + k * BN / wmmaN * 4, B_frag1, k);
+  }
+    
+  for(int k = 0; k < 2; k++){  
+    for(int mii = 0; mii < BN / wmmaM; mii++){
+      for(int nii = 0; nii < BN / wmmaN; nii++){
+          // 16x16x16 for each wmma
+          mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], &FragB[k * BN / wmmaN * 4 + nii * 4], &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + nii * 8]);
+      }
     }     
   }
+
+  
 
   asm volatile("cp.async.wait_group %0;\n" ::"n"(0));
   __syncthreads();   
 
   for(int k = 0; k < 2; k++){
-    loadFragB(FragB, B_frag4, k);
+    loadFragB(FragB + k * BN / wmmaN * 4, B_frag2, k);
+  }
+
+  for(int k = 0; k < 2; k++){
     for(int mii = 0; mii < BN / wmmaM; mii++){
-        // 16x16x16 for each wmma
-        mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], FragB, &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + 24]);
+      for(int nii = 0; nii < BN / wmmaN; nii++){
+          // 16x16x16 for each wmma
+          mmaSync(&FragA[k * BN / wmmaM * 4 + mii * 4], &FragB[k * BN / wmmaN * 4 + nii * 4], &Accum[k*(BN / wmmaM * BK / wmmaN) * 8 + mii * (BK / wmmaN) * 8 + nii * 8 + 16]);
+      }    
     }     
   }
+
+  
 
   // Transpose, transform and store accumulated result
   store_output_tile(Accum, shared_mem, C, out_h, out_w, tiles_dim_w, tiles_dim_h, X, Y);
