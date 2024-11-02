@@ -188,27 +188,27 @@ void print(const float *data, int n, int c, int h, int w) {
   std::cout << std::endl;
 }
   
-void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
+void output_checker(float* A, half* B, int n, int h, int w, int channel, int shift) {
   int error_cnt = 0, i, j, k, m;
   float max_error = 0;
   int kk = -1;
   for(k = 0; k < channel; k++){
-    for (i = 0; i < len; i++) {
+    for (i = 0; i < h; i++) {
        if(k == kk)
           printf("[");
-        for (j = 0; j < len; j++) {
+        for (j = 0; j < w; j++) {
         for (m = 0; m < n; m++) {
             float diff = fabs(
-                A[k*len*len*n + i*len*n + j*n + m] - 
-                __half2float(B[m*len*len*channel + k*len*len + i*len + j]));
+                A[k*h*w*n + i*w*n + j*n + m] - 
+                __half2float(B[m*h*w*channel + k*h*w + i*w + j]));
             if(k == kk){
             // if(i==0 && j==0){
               // printf("h:%d, w:%d, n:%d, c:%d -> %f vs %f : +- %f\n", i, j, m, k,
               // A[k*len*len*n + i*len*n + j*n + m],
               // B[m*len*len*channel + k*len*len + i*len + j], diff);              
               printf("(%.2f, %.2f, %d, %d)", 
-              A[k*len*len*n + i*len*n + j*n + m],
-              __half2float(B[m*len*len*channel + k*len*len + i*len + j]), j, i);
+              A[k*h*w*n + i*w*n + j*n + m],
+              __half2float(B[m*h*w*channel + k*h*w + i*w + j]), j, i);
               // printf("(%f, %f, %d)", 
               // A[k*len*len*n + i*len*n + j*n + m],
               // __half2float(B[m*len*len*channel + k*len*len + i*len + j]), k);
@@ -230,7 +230,7 @@ void output_checker(float* A, half* B, int n, int len, int channel, int shift) {
           printf("]\n"); 
     }
   }
-  printf("[max_error: %f][error_cnt: %d] of %d\n", max_error, error_cnt, n*len*len*channel*shift);
+  printf("[max_error: %f][error_cnt: %d] of %d\n", max_error, error_cnt, n*h*w*channel*shift);
 }
 
 
@@ -593,7 +593,7 @@ int main(int argc, char *argv[]) {
 	printf("cudnn: %f(%d), %f (%d) \n", mi, mi_i, mx, mx_i);
 	
   
-  output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_c, str_w);
+  output_checker(tmp_openCNN, tmp_cudnn, out_n, out_h, out_w, out_c, str_w);
   free(tmp_openCNN); free(tmp_cudnn); 
 
 
