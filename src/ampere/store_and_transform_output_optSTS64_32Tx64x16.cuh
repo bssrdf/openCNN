@@ -87,6 +87,12 @@ __device__ __forceinline__ void  transform_output_tile(float *pOutputs, float2 *
     if(mask&(1<<(i*2+1))){
       pOutputs[x1 + c_tensor + c_glb_offset + id + 1] = At[x+1].y - At[x+2].y - At[x+3].y;
     }
+
+    // if(blockIdx.x == 2 && blockIdx.y == 0 && blockIdx.z == 0 &&  threadIdx.x == 0  && threadIdx.y == 0){
+    //      printf(" A, %d, %d, %d, %d, %f, %f \n", 
+    //            i, x,  x1 + c_tensor + id, x1 + c_tensor + id + c_glb_offset,
+    //            pOutputs[x1 + c_tensor + id], pOutputs[x1 + c_tensor + id + c_glb_offset]);
+    // }
   } 
 }
 
