@@ -29,8 +29,8 @@
 #define wmmaN  16
 #define wmmaK  16
 
-#define TW 16
-#define TH 8
+#define TW 32
+#define TH 4
 
 #ifdef OPTSTS64_CMP
 #define BN_p 128

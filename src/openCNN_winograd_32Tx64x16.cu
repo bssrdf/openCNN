@@ -95,7 +95,7 @@
   cudaError_t err = (f); \
   if (err != cudaSuccess) { \
     std::cout \
-        << "    Error occurred: " << err << std::endl; \
+        << "    Error occurred: " << cudaGetErrorString(err) << std::endl; \
     std::exit(1); \
   } \
 }
@@ -396,8 +396,9 @@ int main(int argc, char *argv[]) {
 
   // Output openCNN    
   float *out_data;
-  fprintf(stderr, "%s: out_n = %d,  out_c = %d, out_h = %d,  out_w = %d, total = %ld \n",
-       __func__, out_n , out_c,  out_h, out_w, out_n * out_c * out_h * out_w *4);
+  size_t total_bytes = out_n * out_c * out_h * out_w *4;
+  fprintf(stderr, "%s: out_n = %d,  out_c = %d, out_h = %d,  out_w = %d, total = %u \n",
+       __func__, out_n , out_c,  out_h, out_w, total_bytes);
   OPENCNN_CALL(cudaMalloc(
         &out_data, out_n * out_c * out_h * out_w * sizeof(float)));  
 
@@ -491,9 +492,9 @@ int main(int argc, char *argv[]) {
   // =================== Query convolution forward algorithm =================== //
   // cudnnConvolutionFwdAlgo_t algo = (cudnnConvolutionFwdAlgo_t)6;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD_NONFUSED;
-  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
+  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_WINOGRAD;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_GEMM;
-  // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+  cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
   // cudnnConvolutionFwdAlgo_t algo = CUDNN_CONVOLUTION_FWD_ALGO_GEMM;
 
   // =================== Query workspace and allocate =================== //
@@ -580,11 +581,13 @@ int main(int argc, char *argv[]) {
 
   std::cout << std::endl;
   // ============================= Compare results =============================  
-  std::cout << "********************************************" << std::endl;    
+  std::cout << "********************************************" << std::endl;
+  printf("cudnn used %ld MB of extra workspace\n", ws_size/1024/1024);
+
   float *tmp_openCNN = (float*) malloc (out_n*out_h*out_w*out_c*sizeof(float));
   half *tmp_cudnn   = (half*) malloc (out_n*out_h*out_w*out_c*sizeof(half)); 
-  cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)<<2, cudaMemcpyDeviceToHost);
-  cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)<<1, cudaMemcpyDeviceToHost);
+  CUDA_CALL(cudaMemcpy(tmp_openCNN, out_data, (out_n*out_h*out_w*out_c)*sizeof(float), cudaMemcpyDeviceToHost));
+  CUDA_CALL(cudaMemcpy(tmp_cudnn, out_data_cudnn, (out_n*out_h*out_w*out_c)*sizeof(half), cudaMemcpyDeviceToHost));
 
 
   find_minmax(tmp_openCNN, out_n*out_h*out_w*out_c, &mi, &mx, &mi_i, &mx_i);

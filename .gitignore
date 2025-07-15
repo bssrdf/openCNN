@@ -1,3 +1,10 @@
 .vscode/
 wgrad
 ggrad
+*.ncu-rep
+*.exe
+*.log
+*.out
+*.exp
+*.lib
+*.png
